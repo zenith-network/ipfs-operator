@@ -1,0 +1,14 @@
+# Example of Echo deployment. The operator will receive this specification and will create a deployment of two "echo" pods.
+apiVersion: gevulot.com/v1
+kind: IpfsNode
+metadata:
+    name: bootstrap
+    namespace: ipfs
+spec:
+    image:
+        tag: v0.39.0
+    kind: BootStrap
+    persistence:
+        size: 150Gi
+    replicas: 2
+    rust_log: info

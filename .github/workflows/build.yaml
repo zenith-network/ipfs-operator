@@ -1,0 +1,30 @@
+name: Build and push development
+
+on:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dcarbone/install-jq-action@v2
+      - name: Login to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_SECRET_KEY }}
+
+      - name: For pull_request get branch name for tag.
+        id: app_version
+        run: echo "TAG=${{ github.head_ref }}" >> $GITHUB_OUTPUT
+
+      - name: Use that version to do something funny.
+        shell: bash
+        run: echo "Current app version is ${{ steps.app_version.outputs.TAG }}"
+
+      - name: Building & Pushing Docker Image
+        run: |
+          docker build . -f Containerfile --tag quay.io/gevulot/gevulot-operator:${{ steps.app_version.outputs.TAG }}
+          docker push quay.io/gevulot/gevulot-operator:${{ steps.app_version.outputs.TAG }}

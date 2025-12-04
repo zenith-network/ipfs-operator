@@ -1,0 +1,78 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: ipfsnodes.gevulot.com
+spec:
+  group: gevulot.com
+  names:
+    categories: []
+    kind: IpfsNode
+    plural: ipfsnodes
+    shortNames: []
+    singular: ipfsnode
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns: []
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for NodeSpec via `CustomResource`
+        properties:
+          spec:
+            description: Generate the Kubernetes wrapper struct `Document` from our Spec and Status struct
+            properties:
+              image:
+                properties:
+                  pullPolicy:
+                    nullable: true
+                    type: string
+                  repository:
+                    nullable: true
+                    type: string
+                  tag:
+                    nullable: true
+                    type: string
+                type: object
+              kind:
+                enum:
+                - Storage
+                - BootStrap
+                type: string
+              p2p_port:
+                format: int32
+                nullable: true
+                type: integer
+              persistence:
+                properties:
+                  accessMode:
+                    nullable: true
+                    type: string
+                  existingClaim:
+                    nullable: true
+                    type: string
+                  size:
+                    nullable: true
+                    type: string
+                  storageClassName:
+                    nullable: true
+                    type: string
+                type: object
+              replicas:
+                format: int32
+                type: integer
+              rust_log:
+                type: string
+            required:
+            - image
+            - kind
+            - persistence
+            - replicas
+            - rust_log
+            type: object
+        required:
+        - spec
+        title: IpfsNode
+        type: object
+    served: true
+    storage: true
+    subresources: {}
