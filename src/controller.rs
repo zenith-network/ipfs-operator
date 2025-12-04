@@ -12,9 +12,10 @@ use kube::{
         watcher::Config,
     },
 };
+use operator_common::types::load_balancer;
 use operator_common::{
     labels, selector_labels,
-    types::{configmap, service, statefulset},
+    types::{configmap, statefulset},
     ActionType, Error, Result,
 };
 use serde::Serialize;
@@ -103,14 +104,7 @@ impl IpfsNode {
         let namespace = self.namespace().unwrap();
         let name = self.name_any();
 
-        for idx in 0..self.spec.replicas {
-            service::delete(
-                client.clone(),
-                format!("{name}-p2p-{idx}"),
-                namespace.clone(),
-            )
-            .await?;
-        }
+        load_balancer::delete(client.clone(), name.clone(), namespace.clone()).await?;
 
         configmap::delete(
             client.clone(),
