@@ -12,10 +12,9 @@ use kube::{
         watcher::Config,
     },
 };
-use operator_common::types::load_balancer;
 use operator_common::{
     labels, selector_labels,
-    types::{configmap, statefulset},
+    types::{configmap, load_balancer, statefulset},
     ActionType, Error, Result,
 };
 use serde::Serialize;
