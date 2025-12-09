@@ -10,14 +10,16 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use kube::api::{DeleteParams, ObjectMeta, PostParams};
 use kube::core::ErrorResponse;
 use kube::{Api, Client, Error};
-use operator_common::types::{
-    configmap,
-    load_balancer::{self, get_external_ips},
+use operator_common::{
+    ActionType, external_address_name,
+    types::{
+        configmap,
+        load_balancer::{self, get_external_ips},
+    },
 };
-use operator_common::ActionType;
 use std::collections::BTreeMap;
 use std::string::ToString;
-use tracing::{event, instrument, Level};
+use tracing::{Level, event, instrument};
 
 const DATA_DIR: &str = "/data";
 
@@ -48,7 +50,7 @@ pub async fn deploy(
                 message: err.to_string(),
                 reason: "Failed to create load balancers".to_string(),
                 code: 418,
-            }))
+            }));
         }
     }
 
@@ -67,13 +69,13 @@ pub async fn deploy(
                 message: err.to_string(),
                 reason: "Failed to create load balancers".to_string(),
                 code: 418,
-            }))
+            }));
         }
     };
 
     configmap::deploy(
         client.clone(),
-        format!("{name}-external-addresses").as_str(),
+        external_address_name(&name).as_str(),
         namespace.clone(),
         external_addrs.clone(),
         labels.0.clone(),
@@ -96,7 +98,7 @@ pub async fn deploy(
             ..VolumeMount::default()
         },
         VolumeMount {
-            mount_path: "/var/lib/ipfs/external-addresses".to_string(),
+            mount_path: "/var/lib/zenith-operators/external-addresses".to_string(),
             name: "external-addresses".to_string(),
             ..VolumeMount::default()
         },

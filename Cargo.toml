@@ -1,8 +1,8 @@
 [package]
 name = "ipfs-operator"
 version = "0.5.1"
-authors = ["Brian Hechinger <brian@gevulot.com>"]
-edition = "2021"
+authors = ["Brian Hechinger <brian@zenith.network>"]
+edition = "2024"
 default-run = "controller"
 license = "Apache-2.0"
 publish = false
@@ -26,7 +26,8 @@ default = []
 telemetry = ["tonic", "opentelemetry-otlp"]
 
 [dependencies]
-operator-common = { path = "../operator-common" }
+# operator-common = { path = "../operator-common" }
+operator-common = { git = "https://github.com/zenith-network/operator-common", branch = "main" }
 actix-web = "4.4.0"
 futures = "0.3.28"
 tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"] }
@@ -53,10 +54,3 @@ assert-json-diff = "2.0.2"
 http = "1"
 hyper = "1"
 tower-test = "0.4.0"
-
-
-# testing new releases - ignore
-#git = "https://github.com/kube-rs/kube.git"
-#branch = "main"
-#rev = "19b90ad3a4dbc83e1dd742847c7707333259b1bb"
-#path = "../kube/kube"
