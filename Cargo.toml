@@ -17,6 +17,11 @@ doc = false
 name = "crdgen"
 path = "src/crdgen.rs"
 
+[[bin]]
+doc = false
+name = "ipfs-test"
+path = "src/ipfs-test.rs"
+
 [lib]
 name = "controller"
 path = "src/lib.rs"
@@ -48,6 +53,11 @@ thiserror = "1.0.47"
 anyhow = "1.0.75"
 kube-runtime = "0.90.0"
 kube = { version = "0.90.0", features = ["runtime", "client", "derive" ]}
+ed25519-dalek = { version = "2.2.0", features = ["rand_core"] }
+libp2p = "0.56.0"
+rand = "0.8.5"
+libp2p-identity = { version = "0.2.13", features = ["ed25519", "rand"] }
+base64 = "0.22.1"
 
 [dev-dependencies]
 assert-json-diff = "2.0.2"

@@ -24,6 +24,8 @@
             buildInputs = [
               p.nil
               p.nixd
+              p.libiconv
+              p.darwin.apple_sdk.frameworks.Security
             ];
           };
       }

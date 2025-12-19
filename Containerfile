@@ -1,4 +1,4 @@
-FROM rust:1-bookworm
+FROM docker.io/rust:1-bookworm
 
 COPY ./Cargo.* ./
 COPY ./src ./src
@@ -12,7 +12,7 @@ COPY ./.git ./src/.git
 
 RUN cargo build --bin=controller --release
 
-FROM debian:bookworm
+FROM docker.io/debian:bookworm
 
 # Copy Gevulot node bin from earlier build step.
 COPY --from=0 target/release/controller /controller

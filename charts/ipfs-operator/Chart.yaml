@@ -3,4 +3,4 @@ name: ipfs-operator
 description: ipfs operator
 type: application
 version: 0.0.1
-appVersion: test15
+appVersion: test22
