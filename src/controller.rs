@@ -1,5 +1,5 @@
-use crate::types::{bootstrap, storage, AnnounceAddr};
-use crate::{telemetry, Context, IpfsNode, Metrics, NodeKind};
+use crate::types::{AnnounceAddr, bootstrap, storage};
+use crate::{Context, IpfsNode, Metrics, NodeKind, telemetry};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use kube::{
@@ -8,15 +8,11 @@ use kube::{
     runtime::{
         controller::{Action, Controller},
         events::Reporter,
-        finalizer::{finalizer, Event as Finalizer},
+        finalizer::{Event as Finalizer, finalizer},
         watcher::Config,
     },
 };
-use operator_common::{
-    labels, selector_labels,
-    types::{configmap, load_balancer, statefulset},
-    ActionType, Error, Result,
-};
+use operator_common::{ActionType, Error, Result, labels, selector_labels};
 use serde::Serialize;
 use std::sync::Arc;
 use tokio::{sync::RwLock, time::Duration};
@@ -103,16 +99,14 @@ impl IpfsNode {
         let namespace = self.namespace().unwrap();
         let name = self.name_any();
 
-        load_balancer::delete(client.clone(), name.clone(), namespace.clone()).await?;
-
-        configmap::delete(
-            client.clone(),
-            format!("{name}-external-addresses"),
-            namespace.clone(),
-        )
-        .await?;
-
-        statefulset::delete(client.clone(), name.clone(), namespace.clone()).await?;
+        match self.spec.kind {
+            NodeKind::BootStrap => {
+                bootstrap::delete(client.clone(), name.clone(), namespace.clone()).await?;
+            }
+            NodeKind::Storage => {
+                storage::delete(client.clone(), name.clone(), namespace.clone()).await?;
+            }
+        }
 
         Ok(Action::await_change())
     }

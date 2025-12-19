@@ -1,4 +1,6 @@
 use crate::crd::NodeSpec;
+use crate::identity::Identities;
+use crate::ipfs::{generate_config, get_bootstrap_list};
 use k8s_openapi::api::apps::v1::{StatefulSet, StatefulSetSpec};
 use k8s_openapi::api::core::v1::{
     ConfigMapVolumeSource, Container, ContainerPort, EnvVar, PersistentVolumeClaim,
@@ -7,9 +9,10 @@ use k8s_openapi::api::core::v1::{
 };
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
-use kube::api::{DeleteParams, ObjectMeta, PostParams};
+use kube::api::{ObjectMeta, PostParams};
 use kube::core::ErrorResponse;
 use kube::{Api, Client, Error};
+use operator_common::types::statefulset;
 use operator_common::{
     ActionType, external_address_name,
     types::{
@@ -19,7 +22,7 @@ use operator_common::{
 };
 use std::collections::BTreeMap;
 use std::string::ToString;
-use tracing::{Level, event, instrument};
+use tracing::{Level, event, info, instrument};
 
 const DATA_DIR: &str = "/data";
 
@@ -76,15 +79,81 @@ pub async fn deploy(
     configmap::deploy(
         client.clone(),
         external_address_name(&name).as_str(),
-        namespace.clone(),
+        &namespace,
         external_addrs.clone(),
         labels.0.clone(),
     )
     .await?;
 
-    //
-    // DONE TO HERE
-    //
+    let identities = match Identities::new(
+        client.clone(),
+        &name,
+        &namespace,
+        spec.replicas,
+        action,
+        labels.0.clone(),
+    )
+    .await
+    {
+        Ok(i) => i,
+        Err(err) => {
+            return Err(Error::Api(ErrorResponse {
+                status: "Failed".to_string(),
+                message: err.to_string(),
+                reason: "Failed to get identities".to_string(),
+                code: 418,
+            }));
+        }
+    };
+
+    let bootstrap_list =
+        match get_bootstrap_list(&name, identities.clone(), external_addrs.clone()).await {
+            Ok(i) => i,
+            Err(err) => {
+                return Err(Error::Api(ErrorResponse {
+                    status: "Failed".to_string(),
+                    message: err.to_string(),
+                    reason: "Failed to get bootstrap list".to_string(),
+                    code: 418,
+                }));
+            }
+        };
+
+    info!(
+        "Bootstrap list generated successfully: {:?}",
+        bootstrap_list
+    );
+
+    let configs = match generate_config(
+        client.clone(),
+        &name,
+        identities,
+        external_addrs,
+        bootstrap_list,
+        labels.0.clone(),
+    )
+    .await
+    {
+        Ok(config) => config,
+        Err(err) => {
+            return Err(Error::Api(ErrorResponse {
+                status: "Failed".to_string(),
+                message: err.to_string(),
+                reason: "Failed to generate config".to_string(),
+                code: 418,
+            }));
+        }
+    };
+
+    configmap::deploy(
+        client.clone(),
+        &format!("{name}-configs"),
+        &namespace,
+        configs.clone(),
+        labels.0.clone(),
+    )
+    .await?;
+
     let mut requests: BTreeMap<String, Quantity> = BTreeMap::new();
     requests.insert(
         "storage".to_owned(),
@@ -98,8 +167,14 @@ pub async fn deploy(
             ..VolumeMount::default()
         },
         VolumeMount {
-            mount_path: "/var/lib/zenith-operators/external-addresses".to_string(),
-            name: "external-addresses".to_string(),
+            mount_path: "/var/lib/ipfs/configs".to_string(),
+            name: "ipfs-configs".to_string(),
+            ..VolumeMount::default()
+        },
+        VolumeMount {
+            mount_path: "/data/ipfs/swarm.key".to_string(),
+            name: "swarm-key".to_string(),
+            sub_path: Some("swarm.key".to_string()),
             ..VolumeMount::default()
         },
     ]);
@@ -113,9 +188,17 @@ pub async fn deploy(
             ..Volume::default()
         },
         Volume {
-            name: "external-addresses".to_string(),
+            name: "ipfs-configs".to_string(),
             config_map: Some(ConfigMapVolumeSource {
-                name: Some(format!("{name}-ipfs-external-addresses")),
+                name: Some(format!("{name}-configs")),
+                ..ConfigMapVolumeSource::default()
+            }),
+            ..Volume::default()
+        },
+        Volume {
+            name: "swarm-key".to_string(),
+            config_map: Some(ConfigMapVolumeSource {
+                name: Some(format!("{name}-swarm-key")),
                 ..ConfigMapVolumeSource::default()
             }),
             ..Volume::default()
@@ -139,43 +222,6 @@ pub async fn deploy(
             },
             template: PodTemplateSpec {
                 spec: Some(PodSpec {
-                    init_containers: Some(vec![
-                            Container {
-                                name: "generate-node-key".to_owned(),
-                                image: Some(format!("{}:{}", spec.image.repository.clone().unwrap_or_default(), spec.image.tag.clone().unwrap_or_default())),
-                                image_pull_policy: Some(spec.image.pull_policy.clone().unwrap_or_default()),
-                                env: Some(vec![EnvVar {
-                                    name: "RUST_LOG".to_owned(),
-                                    value: Some(spec.rust_log.clone()),
-                                    ..EnvVar::default()
-                                }]),
-                                volume_mounts: mounts.clone(),
-                                command: Some(vec![
-                                    "sh".to_owned(),
-                                    "-c".to_owned(),
-                                    format!("if [ ! -e {node_key_file} ]; then /gevulot generate key --key-file {node_key_file}; fi", node_key_file = format!("{DATA_DIR}/node.key")),
-                                ]),
-                                ..Container::default()
-                            },
-                            Container {
-                                name: "database-migration".to_owned(),
-                                image: Some(format!("{}:{}", spec.image.repository.clone().unwrap_or_default(), spec.image.tag.clone().unwrap_or_default())),
-                                image_pull_policy: Some(spec.image.pull_policy.clone().unwrap_or_default()),
-                                env: Some(vec![
-                                    EnvVar {
-                                        name: "RUST_LOG".to_owned(),
-                                        value: Some(spec.rust_log.clone()),
-                                        ..EnvVar::default()
-                                    },
-                                ]),
-                                volume_mounts: mounts.clone(),
-                                command: Some(vec![
-                                    "/gevulot".to_owned(),
-                                    "migrate".to_owned(),
-                                ]),
-                                ..Container::default()
-                            },
-                        ]),
                     containers: vec![Container {
                         name: name.to_owned(),
                         image: Some(format!(
@@ -184,24 +230,22 @@ pub async fn deploy(
                             spec.image.tag.clone().unwrap_or_default()
                         )),
                         image_pull_policy: Some(spec.image.pull_policy.clone().unwrap_or_default()),
-                        ports: Some(vec![
-                            ContainerPort {
-                                name: Some("http".to_owned()),
-                                container_port: 9944,
-                                ..ContainerPort::default()
-                            },
-                            ContainerPort {
-                                name: Some("p2p".to_owned()),
-                                container_port: 9999,
-                                ..ContainerPort::default()
-                            },
-                        ]),
+                        ports: Some(vec![ContainerPort {
+                            name: Some("p2p".to_owned()),
+                            container_port: 4001,
+                            ..ContainerPort::default()
+                        }]),
                         command: Some(vec![
-                                "sh".to_owned(),
-                                "-c".to_owned(),
-                                "/gevulot run --p2p-advertised-listen-addr $(cat /var/lib/ipfs/external-addresses/${HOSTNAME}):9999".to_owned(),
-                            ]),
+                            "sh".to_owned(),
+                            "-c".to_owned(),
+                            "/sbin/tini -- /usr/local/bin/start_ipfs --config-file /var/lib/ipfs/configs/${HOSTNAME} daemon".to_owned(),
+                        ]),
                         volume_mounts: mounts.clone(),
+                        env: Some(vec![EnvVar {
+                            name: "IPFS_PROFILE".to_owned(),
+                            value: Some("server".to_owned()),
+                            ..EnvVar::default()
+                        }]),
                         ..Container::default()
                     }],
                     volumes,
@@ -215,21 +259,21 @@ pub async fn deploy(
 
             // Only archive and json rpc nodes get PVCs
             volume_claim_templates: Some(vec![PersistentVolumeClaim {
-                    metadata: ObjectMeta {
-                        name: Some("node-data".to_string()),
-                        labels: Some(labels.0.clone()),
-                        ..ObjectMeta::default()
-                    },
-                    spec: Some(PersistentVolumeClaimSpec {
-                        access_modes: Some(vec!["ReadWriteOnce".to_string()]),
-                        resources: Some(VolumeResourceRequirements {
-                            requests: Some(requests),
-                            ..VolumeResourceRequirements::default()
-                        }),
-                        ..PersistentVolumeClaimSpec::default()
+                metadata: ObjectMeta {
+                    name: Some("node-data".to_string()),
+                    labels: Some(labels.0.clone()),
+                    ..ObjectMeta::default()
+                },
+                spec: Some(PersistentVolumeClaimSpec {
+                    access_modes: Some(vec!["ReadWriteOnce".to_string()]),
+                    resources: Some(VolumeResourceRequirements {
+                        requests: Some(requests),
+                        ..VolumeResourceRequirements::default()
                     }),
-                    ..PersistentVolumeClaim::default()
-                }]),
+                    ..PersistentVolumeClaimSpec::default()
+                }),
+                ..PersistentVolumeClaim::default()
+            }]),
             ..StatefulSetSpec::default()
         }),
         ..StatefulSet::default()
@@ -237,7 +281,6 @@ pub async fn deploy(
 
     event!(Level::INFO, name, namespace, "Creating StatefulSet");
 
-    // Create the deployment defined above
     let statefulset_api: Api<StatefulSet> = Api::namespaced(client, namespace.as_str());
     statefulset_api
         .create(&PostParams::default(), &object)
@@ -247,23 +290,21 @@ pub async fn deploy(
 #[instrument(skip(client))]
 pub async fn delete(client: Client, name: String, namespace: String) -> Result<(), Error> {
     event!(Level::INFO, name, namespace, "Deleting StatefulSet");
-
-    let api: Api<StatefulSet> = Api::namespaced(client, namespace.as_str());
-    match api.delete(name.as_str(), &DeleteParams::default()).await {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            match e {
-                // If the resource doesn't exist, we can ignore the error
-                Error::Api(er) => {
-                    if er.reason == "NotFound" {
-                        return Ok(());
-                    };
-                    Err(Error::Api(er))
-                }
-                _ => Err(e),
-            }
-        }
-    }
+    statefulset::delete(client.clone(), name.clone(), namespace.clone()).await?;
+    configmap::delete(
+        client.clone(),
+        external_address_name(&name),
+        namespace.clone(),
+    )
+    .await?;
+    configmap::delete(client.clone(), format!("{name}-configs"), namespace.clone()).await?;
+    configmap::delete(
+        client.clone(),
+        format!("{name}-identities"),
+        namespace.clone(),
+    )
+    .await?;
+    load_balancer::delete(client, name, namespace).await
 }
 
 // #[instrument]
