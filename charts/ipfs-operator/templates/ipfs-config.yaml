@@ -6,4 +6,4 @@ metadata:
     {{- include "controller.labels" . | nindent 4 }}
 data:
   config: |-
-{{ .Files.Get "config/ipfs-config.json" | nindent 4 }}
+{{ .Files.Get "files/ipfs-config.json" | nindent 4 }}

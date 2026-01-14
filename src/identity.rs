@@ -3,11 +3,11 @@ use kube::Client;
 use libp2p::PeerId;
 use operator_common::{
     ActionType, Error,
-    types::configmap::{self, get_data},
+    types::configmap::{self},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt::Display};
-use tracing::{debug, error, instrument, warn};
+use tracing::{debug, error, instrument};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Identities {
@@ -25,39 +25,10 @@ impl Identities {
         labels: BTreeMap<String, String>,
     ) -> Result<Self, Error> {
         debug!("Creating new identities, action: {:?}", action);
-        let identities = match action {
-            ActionType::Create => _create(name, 0, replicas as usize).await?,
-            ActionType::Update => {
-                let mut identities = match &get_data(
-                    client.clone(),
-                    &format!("{name}-identities"),
-                    &namespace,
-                )
-                .await
-                {
-                    Ok(i) => string_to_identity(i)?,
-                    Err(_) => {
-                        warn!(
-                            "Creating {name}-identities even though it really should have existed!"
-                        );
-                        _create(name, 0, replicas as usize).await?
-                    }
-                };
-
-                let identities_count = identities.len();
-
-                if identities_count > replicas as usize {
-                    for idx in (replicas as usize)..identities_count {
-                        identities.remove(&format!("{name}-{idx}"));
-                    }
-                    identities
-                } else if identities_count < replicas as usize {
-                    _create(name, identities_count, replicas as usize).await?
-                } else {
-                    identities
-                }
-            }
-        };
+        let mut identities: BTreeMap<String, Identity> = BTreeMap::new();
+        for idx in 0..replicas {
+            identities.insert(format!("{name}-{idx}"), Identity::new()?);
+        }
 
         configmap::deploy(
             client.clone(),
@@ -69,6 +40,16 @@ impl Identities {
         .await?;
 
         Ok(Self { ids: identities })
+    }
+
+    #[instrument(skip(client))]
+    pub async fn get(client: Client, name: &str, namespace: &str) -> Result<Self, Error> {
+        debug!("Getting identities");
+        let cm =
+            configmap::get_data(client.clone(), &format!("{name}-identities"), &namespace).await?;
+        Ok(Self {
+            ids: string_to_identity(&cm)?,
+        })
     }
 }
 
@@ -101,14 +82,14 @@ impl Identities {
     // }
 }
 
-fn string_to_identity(
-    input: &BTreeMap<String, String>,
-) -> Result<BTreeMap<String, Identity>, serde_json::Error> {
-    input
-        .iter()
-        .map(|(k, json)| Ok((k.clone(), serde_json::from_str::<Identity>(json)?)))
-        .collect()
-}
+// fn string_to_identity(
+//     input: &BTreeMap<String, String>,
+// ) -> Result<BTreeMap<String, Identity>, serde_json::Error> {
+//     input
+//         .iter()
+//         .map(|(k, json)| Ok((k.clone(), serde_json::from_str::<Identity>(json)?)))
+//         .collect()
+// }
 
 fn identity_to_string(
     input: &BTreeMap<String, Identity>,
@@ -116,6 +97,15 @@ fn identity_to_string(
     input
         .iter()
         .map(|(k, v)| Ok((k.clone(), serde_json::to_string(v)?)))
+        .collect()
+}
+
+fn string_to_identity(
+    input: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, Identity>, serde_json::Error> {
+    input
+        .iter()
+        .map(|(k, v)| Ok((k.clone(), serde_json::from_str(v)?)))
         .collect()
 }
 

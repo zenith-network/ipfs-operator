@@ -11,5 +11,6 @@ pub mod telemetry;
 mod metrics;
 pub use metrics::Metrics;
 
+mod containers;
 mod identity;
 mod ipfs;

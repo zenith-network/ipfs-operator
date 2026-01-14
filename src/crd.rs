@@ -18,38 +18,72 @@ use tokio::sync::RwLock;
 )]
 pub struct NodeSpec {
     pub replicas: i32,
-    pub image: Image,
-    pub persistence: Persistence,
+    pub ipfs: IpfsSpec,
+    pub ipfs_cluster: Option<IpfsClusterSpec>,
     pub rust_log: String,
     pub kind: NodeKind,
     pub p2p_port: Option<i32>,
+    pub bootstrap_name: Option<String>, // Only needed for storage clusters
 }
 
 impl Default for NodeSpec {
     fn default() -> Self {
         Self {
             replicas: 1,
-            image: Image::default(),
-            persistence: Persistence::default(),
+            ipfs: IpfsSpec::default(),
+            ipfs_cluster: None,
             rust_log: "info".to_string(),
             kind: NodeKind::default(),
             p2p_port: Some(4001),
+            bootstrap_name: None,
+        }
+    }
+}
+
+#[derive(Default, Serialize, Deserialize, Debug, PartialEq, Clone, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct IpfsSpec {
+    pub image: IpfsImage,
+    pub persistence: Persistence,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct IpfsClusterSpec {
+    pub image: IpfsClusterImage,
+    pub persistence: Persistence,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct IpfsImage {
+    pub repository: Option<String>,
+    pub tag: Option<String>,
+    pub pull_policy: Option<String>,
+}
+
+impl Default for IpfsImage {
+    fn default() -> Self {
+        Self {
+            repository: Some("docker.io/ipfs/kubo".to_string()),
+            tag: Some("latest".to_string()),
+            pull_policy: Some("IfNotPresent".to_string()),
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct Image {
+pub struct IpfsClusterImage {
     pub repository: Option<String>,
     pub tag: Option<String>,
     pub pull_policy: Option<String>,
 }
 
-impl Default for Image {
+impl Default for IpfsClusterImage {
     fn default() -> Self {
         Self {
-            repository: Some("docker.io/ipfs/kubo".to_string()),
+            repository: Some("docker.io/ipfs/ipfs-cluster".to_string()),
             tag: Some("latest".to_string()),
             pull_policy: Some("IfNotPresent".to_string()),
         }
