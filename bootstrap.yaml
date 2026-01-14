@@ -2,14 +2,15 @@
 apiVersion: gevulot.com/v1
 kind: IpfsNode
 metadata:
-    name: bootstrap
-    namespace: ipfs
+  name: bootstrap
+  namespace: ipfs
 spec:
+  replicas: 2
+  ipfs:
     image:
-        repository: docker.io/ipfs/kubo
-        tag: v0.39.0
-    kind: BootStrap
+      repository: docker.io/ipfs/kubo
+      tag: v0.39.0
     persistence:
-        size: 150Gi
-    replicas: 2
-    rust_log: info
+      size: 1Gi
+  kind: BootStrap
+  rust_log: info

@@ -49,6 +49,13 @@ pub async fn generate_config(
                 .collect(),
         );
         config["AutoConf"]["Enabled"] = Value::Bool(false);
+        config["Routing"]["Type"] = Value::String("dht".to_string());
+        config["AutoTLS"]["Enabled"] = Value::Bool(false);
+        config["Swarm"]["Transports"]["Network"]["Websocket"] = Value::Bool(false);
+        config["DNS"]["Resolvers"] = Value::Null;
+        config["Routing"]["DelegatedRouters"] = Value::Array(vec![]);
+        config["Ipns"]["DelegatedPublishers"] = Value::Array(vec![]);
+
         configs.insert(format!("{idx}"), serde_json::to_string_pretty(&config)?);
     }
 

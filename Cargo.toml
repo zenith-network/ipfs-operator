@@ -31,8 +31,8 @@ default = []
 telemetry = ["tonic", "opentelemetry-otlp"]
 
 [dependencies]
-# operator-common = { path = "../operator-common" }
-operator-common = { git = "https://github.com/zenith-network/operator-common", branch = "main" }
+operator-common = { path = "../operator-common" }
+#operator-common = { git = "https://github.com/zenith-network/operator-common", branch = "main" }
 actix-web = "4.4.0"
 futures = "0.3.28"
 tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"] }

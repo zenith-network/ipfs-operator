@@ -1,4 +1,4 @@
-use crate::types::{AnnounceAddr, bootstrap, storage};
+use crate::types::{bootstrap, storage};
 use crate::{Context, IpfsNode, Metrics, NodeKind, telemetry};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
@@ -80,7 +80,7 @@ impl IpfsNode {
                     name.clone(),
                     namespace.clone(),
                     self.spec.clone(),
-                    AnnounceAddr::StandardCluster("1.2.3.4".to_string()),
+                    action,
                     (
                         labels(name.clone(), NodeKind::Storage.to_string()),
                         selector_labels(name.clone(), NodeKind::Storage.to_string()),

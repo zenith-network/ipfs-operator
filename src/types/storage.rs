@@ -1,20 +1,18 @@
+use crate::containers;
 use crate::crd::NodeSpec;
-use crate::types::AnnounceAddr;
+use crate::identity::Identities;
+use crate::ipfs::{generate_config, get_bootstrap_list};
 use k8s_openapi::api::apps::v1::{StatefulSet, StatefulSetSpec};
-use k8s_openapi::api::core::v1::{
-    ConfigMapVolumeSource, Container, ContainerPort, EnvVar, PersistentVolumeClaim,
-    PersistentVolumeClaimSpec, PersistentVolumeClaimVolumeSource, PodSpec, PodTemplateSpec, Volume,
-    VolumeMount, VolumeResourceRequirements,
-};
-use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
+use k8s_openapi::api::core::v1::{PodSpec, PodTemplateSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
-use kube::api::{DeleteParams, ObjectMeta, PostParams};
+use kube::api::{ObjectMeta, Patch, PatchParams};
+use kube::core::ErrorResponse;
 use kube::{Api, Client, Error};
+use operator_common::types::{configmap, load_balancer, service, statefulset};
+use operator_common::{ActionType, external_address_name};
 use std::collections::BTreeMap;
 use std::string::ToString;
-use tracing::{event, instrument, Level};
-
-const DATA_DIR: &str = "/data";
+use tracing::{Level, event, info, instrument};
 
 /// Creates a new deployment of `n` pods with the `inanimate/echo-server:latest` docker image inside,
 /// where `n` is the number of `replicas` given.
@@ -30,45 +28,204 @@ pub async fn deploy(
     name: String,
     namespace: String,
     spec: NodeSpec,
-    announce_addr: AnnounceAddr,
+    action: ActionType,
     labels: (BTreeMap<String, String>, BTreeMap<String, String>),
 ) -> Result<StatefulSet, Error> {
-    let mut requests: BTreeMap<String, Quantity> = BTreeMap::new();
-    requests.insert(
-        "storage".to_owned(),
-        Quantity(spec.persistence.size.clone().unwrap_or_default()),
+    // Create p2p port
+    match load_balancer::create(
+        client.clone(),
+        name.clone(),
+        namespace.clone(),
+        spec.kind.to_string(),
+        spec.replicas,
+        service::Port {
+            name: "p2p".to_string(),
+            port: spec.p2p_port.unwrap_or(4001),
+            protocol: "TCP".to_string(),
+        },
+        action,
+    )
+    .await
+    {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(Error::Api(ErrorResponse {
+                status: "Failed".to_string(),
+                message: err.to_string(),
+                reason: "Failed to create load balancers for p2p port".to_string(),
+                code: 418,
+            }));
+        }
+    }
+
+    let external_addrs = match load_balancer::get_external_ips(
+        client.clone(),
+        name.clone(),
+        namespace.clone(),
+        service::Port {
+            name: "p2p".to_string(),
+            port: spec.p2p_port.unwrap_or(4001),
+            protocol: "TCP".to_string(),
+        },
+        spec.replicas,
+    )
+    .await
+    {
+        Ok(ips) => ips,
+        Err(err) => {
+            return Err(Error::Api(ErrorResponse {
+                status: "Failed".to_string(),
+                message: err.to_string(),
+                reason: "Failed to create load balancers".to_string(),
+                code: 418,
+            }));
+        }
+    };
+
+    configmap::deploy(
+        client.clone(),
+        external_address_name(&name).as_str(),
+        &namespace,
+        external_addrs.clone(),
+        labels.0.clone(),
+    )
+    .await?;
+
+    let identities = match Identities::new(
+        client.clone(),
+        &name,
+        &namespace,
+        spec.replicas,
+        action,
+        labels.0.clone(),
+    )
+    .await
+    {
+        Ok(i) => i,
+        Err(err) => {
+            return Err(Error::Api(ErrorResponse {
+                status: "Failed".to_string(),
+                message: err.to_string(),
+                reason: "Failed to get identities".to_string(),
+                code: 418,
+            }));
+        }
+    };
+
+    let bootstrap_name = spec
+        .bootstrap_name
+        .clone()
+        .unwrap_or("bootstrap".to_string());
+
+    let bootstrap_identities =
+        match Identities::get(client.clone(), &bootstrap_name, &namespace).await {
+            Ok(i) => i,
+            Err(err) => {
+                return Err(Error::Api(ErrorResponse {
+                    status: "Failed".to_string(),
+                    message: err.to_string(),
+                    reason: "Failed to get identities".to_string(),
+                    code: 418,
+                }));
+            }
+        };
+
+    let bootstrap_external_addrs = match load_balancer::get_external_ips(
+        client.clone(),
+        bootstrap_name.clone(),
+        namespace.clone(),
+        service::Port {
+            name: "p2p".to_string(),
+            port: spec.p2p_port.unwrap_or(4001),
+            protocol: "TCP".to_string(),
+        },
+        spec.replicas,
+    )
+    .await
+    {
+        Ok(ips) => ips,
+        Err(err) => {
+            return Err(Error::Api(ErrorResponse {
+                status: "Failed".to_string(),
+                message: err.to_string(),
+                reason: "Failed to create load balancers".to_string(),
+                code: 418,
+            }));
+        }
+    };
+
+    let bootstrap_list = match get_bootstrap_list(
+        &name,
+        bootstrap_identities.clone(),
+        bootstrap_external_addrs.clone(),
+    )
+    .await
+    {
+        Ok(i) => i,
+        Err(err) => {
+            return Err(Error::Api(ErrorResponse {
+                status: "Failed".to_string(),
+                message: err.to_string(),
+                reason: "Failed to get bootstrap list".to_string(),
+                code: 418,
+            }));
+        }
+    };
+
+    info!(
+        "Bootstrap list generated successfully: {:?}",
+        bootstrap_list
     );
 
-    let mounts = Some(vec![
-        VolumeMount {
-            mount_path: DATA_DIR.to_string(),
-            name: "node-data".to_string(),
-            ..VolumeMount::default()
-        },
-        VolumeMount {
-            mount_path: "/var/lib/gevulot/announce-addresses".to_string(),
-            name: "announce-addresses".to_string(),
-            ..VolumeMount::default()
-        },
-    ]);
-    let volumes = Some(vec![
-        Volume {
-            name: "node-data".to_string(),
-            persistent_volume_claim: Some(PersistentVolumeClaimVolumeSource {
-                claim_name: "node-data".to_string(),
-                ..PersistentVolumeClaimVolumeSource::default()
-            }),
-            ..Volume::default()
-        },
-        Volume {
-            name: "announce-addresses".to_string(),
-            config_map: Some(ConfigMapVolumeSource {
-                name: Some(format!("{name}-announce-addresses")),
-                ..ConfigMapVolumeSource::default()
-            }),
-            ..Volume::default()
-        },
-    ]);
+    let configs = match generate_config(
+        client.clone(),
+        &name,
+        identities,
+        external_addrs,
+        bootstrap_list,
+        labels.0.clone(),
+    )
+    .await
+    {
+        Ok(config) => config,
+        Err(err) => {
+            return Err(Error::Api(ErrorResponse {
+                status: "Failed".to_string(),
+                message: err.to_string(),
+                reason: "Failed to generate config".to_string(),
+                code: 418,
+            }));
+        }
+    };
+
+    configmap::deploy(
+        client.clone(),
+        &format!("{name}-configs"),
+        &namespace,
+        configs.clone(),
+        labels.0.clone(),
+    )
+    .await?;
+
+    let mut volumes = containers::ipfs::volumes(&name, &bootstrap_name);
+    let mut containers = vec![containers::ipfs::container(&name, &spec)];
+
+    let mut pvc = vec![containers::pvc(
+        "ipfs-data",
+        spec.ipfs.persistence.clone(),
+        labels.clone(),
+    )];
+
+    if let Some(ipfs_cluster) = spec.ipfs_cluster {
+        pvc.push(containers::pvc(
+            "ipfs-cluster-data",
+            ipfs_cluster.persistence.clone(),
+            labels.clone(),
+        ));
+
+        volumes.extend(containers::ipfs_cluster::volumes().iter().cloned());
+        containers.push(containers::ipfs_cluster::container(&name, &ipfs_cluster));
+    }
 
     // Definition of the deployment. Alternatively, a YAML representation could be used as well.
     let object: StatefulSet = StatefulSet {
@@ -87,72 +244,8 @@ pub async fn deploy(
             },
             template: PodTemplateSpec {
                 spec: Some(PodSpec {
-                    init_containers: Some(vec![
-                            Container {
-                                name: "generate-node-key".to_owned(),
-                                image: Some(format!("{}:{}", spec.image.repository.clone().unwrap_or_default(), spec.image.tag.clone().unwrap_or_default())),
-                                image_pull_policy: Some(spec.image.pull_policy.clone().unwrap_or_default()),
-                                env: Some(vec![EnvVar {
-                                    name: "RUST_LOG".to_owned(),
-                                    value: Some(spec.rust_log.clone()),
-                                    ..EnvVar::default()
-                                }]),
-                                volume_mounts: mounts.clone(),
-                                command: Some(vec![
-                                    "sh".to_owned(),
-                                    "-c".to_owned(),
-                                    format!("if [ ! -e {node_key_file} ]; then /gevulot generate key --key-file {node_key_file}; fi", node_key_file = format!("{DATA_DIR}/node.key")),
-                                ]),
-                                ..Container::default()
-                            },
-                            Container {
-                                name: "database-migration".to_owned(),
-                                image: Some(format!("{}:{}", spec.image.repository.clone().unwrap_or_default(), spec.image.tag.clone().unwrap_or_default())),
-                                image_pull_policy: Some(spec.image.pull_policy.clone().unwrap_or_default()),
-                                env: Some(vec![
-                                    EnvVar {
-                                        name: "RUST_LOG".to_owned(),
-                                        value: Some(spec.rust_log.clone()),
-                                        ..EnvVar::default()
-                                    },
-                                ]),
-                                volume_mounts: mounts.clone(),
-                                command: Some(vec![
-                                    "/gevulot".to_owned(),
-                                    "migrate".to_owned(),
-                                ]),
-                                ..Container::default()
-                            },
-                        ]),
-                    containers: vec![Container {
-                        name: name.to_owned(),
-                        image: Some(format!(
-                            "{}:{}",
-                            spec.image.repository.unwrap_or_default(),
-                            spec.image.tag.unwrap_or_default()
-                        )),
-                        image_pull_policy: Some(spec.image.pull_policy.unwrap_or_default()),
-                        ports: Some(vec![
-                            ContainerPort {
-                                name: Some("http".to_owned()),
-                                container_port: 9944,
-                                ..ContainerPort::default()
-                            },
-                            ContainerPort {
-                                name: Some("p2p".to_owned()),
-                                container_port: 9999,
-                                ..ContainerPort::default()
-                            },
-                        ]),
-                        command: Some(vec![
-                                "sh".to_owned(),
-                                "-c".to_owned(),
-                                "/gevulot run --p2p-advertised-listen-addr $(cat /var/lib/gevulot/announce-addresses/${HOSTNAME}):9999".to_owned(),
-                            ]),
-                        volume_mounts: mounts.clone(),
-                        ..Container::default()
-                    }],
-                    volumes,
+                    containers,
+                    volumes: Some(volumes),
                     ..PodSpec::default()
                 }),
                 metadata: Some(ObjectMeta {
@@ -161,23 +254,7 @@ pub async fn deploy(
                 }),
             },
 
-            // Only archive and json rpc nodes get PVCs
-            volume_claim_templates: Some(vec![PersistentVolumeClaim {
-                    metadata: ObjectMeta {
-                        name: Some("node-data".to_string()),
-                        labels: Some(labels.0.clone()),
-                        ..ObjectMeta::default()
-                    },
-                    spec: Some(PersistentVolumeClaimSpec {
-                        access_modes: Some(vec!["ReadWriteOnce".to_string()]),
-                        resources: Some(VolumeResourceRequirements {
-                            requests: Some(requests),
-                            ..VolumeResourceRequirements::default()
-                        }),
-                        ..PersistentVolumeClaimSpec::default()
-                    }),
-                    ..PersistentVolumeClaim::default()
-                }]),
+            volume_claim_templates: Some(pvc),
             ..StatefulSetSpec::default()
         }),
         ..StatefulSet::default()
@@ -185,93 +262,31 @@ pub async fn deploy(
 
     event!(Level::INFO, name, namespace, "Creating StatefulSet");
 
-    // Create the deployment defined above
     let statefulset_api: Api<StatefulSet> = Api::namespaced(client, namespace.as_str());
+    let params = PatchParams::apply(&name);
     statefulset_api
-        .create(&PostParams::default(), &object)
+        .patch(&name, &params, &Patch::Apply(&object))
         .await
 }
 
-/// Deletes an existing deployment.
-///
-/// # Arguments:
-/// - `client` - A Kubernetes client to delete the Deployment with
-/// - `name` - Name of the deployment to delete
-/// - `namespace` - Namespace the existing deployment resides in
-///
-/// Note: It is assumed the deployment exists for simplicity. Otherwise returns an Error.
 #[instrument(skip(client))]
 pub async fn delete(client: Client, name: String, namespace: String) -> Result<(), Error> {
     event!(Level::INFO, name, namespace, "Deleting StatefulSet");
+    statefulset::delete(client.clone(), name.clone(), namespace.clone()).await?;
+    configmap::delete(
+        client.clone(),
+        external_address_name(&name),
+        namespace.clone(),
+    )
+    .await?;
 
-    let api: Api<StatefulSet> = Api::namespaced(client, namespace.as_str());
-    match api.delete(name.as_str(), &DeleteParams::default()).await {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            match e {
-                // If the resource doesn't exist, we can ignore the error
-                Error::Api(er) => {
-                    if er.reason == "NotFound" {
-                        return Ok(());
-                    };
-                    Err(Error::Api(er))
-                }
-                _ => Err(e),
-            }
-        }
-    }
+    configmap::delete(client.clone(), format!("{name}-configs"), namespace.clone()).await?;
+    configmap::delete(
+        client.clone(),
+        format!("{name}-identities"),
+        namespace.clone(),
+    )
+    .await?;
+
+    load_balancer::delete(client, name, namespace).await
 }
-
-// #[instrument]
-// fn set_env_vars(
-//     spec: NodeSpec,
-//     announce_addr: AnnounceAddr,
-//     discovery_addrs: Option<String>,
-// ) -> Vec<EnvVar> {
-//     let mut variables: Vec<EnvVar> = Vec::new();
-
-//     // All modes get these
-//     variables.push(EnvVar {
-//         name: "RUST_LOG".to_owned(),
-//         value: Some(spec.rust_log.to_owned()),
-//         ..EnvVar::default()
-//     });
-
-//     variables.push(EnvVar {
-//         name: "GEVULOT_DATA_DIRECTORY".to_owned(),
-//         value: Some(DATA_DIR.to_string()),
-//         ..EnvVar::default()
-//     });
-
-//     variables.push(EnvVar {
-//         name: "GEVULOT_HTTP_PORT".to_owned(),
-//         value: Some("9995".to_string()),
-//         ..EnvVar::default()
-//     });
-
-//     variables.push(EnvVar {
-//         name: "GEVULOT_P2P_LISTEN_ADDR".to_owned(),
-//         value: Some("0.0.0.0:9999".to_string()),
-//         ..EnvVar::default()
-//     });
-
-//     variables.push(EnvVar {
-//         name: "GEVULOT_HEALTHCHECK_LISTEN_ADDR".to_owned(),
-//         value: Some("0.0.0.0:8888".to_string()),
-//         ..EnvVar::default()
-//     });
-
-//     // Archive nodes need to set these differently. The only way to reasonably do it is to use CLI
-//     // flags so this env variable is un-set for archive nodes.
-//     if let AnnounceAddr::StandardCluster(addr) = announce_addr {
-//         variables.push(EnvVar {
-//             name: "GEVULOT_P2P_ADVERTISED_LISTEN_ADDR".to_owned(),
-//             value: Some(format!("{}:9999", addr)),
-//             ..EnvVar::default()
-//         });
-//     };
-
-//     event!(Level::INFO, "Setting environment variables");
-
-//     variables
-// }
