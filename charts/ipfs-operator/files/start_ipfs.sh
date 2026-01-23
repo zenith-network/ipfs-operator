@@ -15,14 +15,6 @@ fi
 # 2nd invocation with regular user
 ipfs version
 
-
-if [ -e "$repo/config" ]; then
-  echo "Found IPFS fs-repo at $repo"
-else
-  ipfs init ${IPFS_PROFILE:+"--profile=$IPFS_PROFILE"}
-fi
-
 echo "Using hostname: ${HOSTNAME}"
-cp "/var/lib/ipfs/configs/${HOSTNAME}" "$repo/config"
 
-exec ipfs "$@"
+exec ipfs "$@" --init --init-config=/var/lib/ipfs/configs/${HOSTNAME}

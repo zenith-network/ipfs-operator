@@ -1,21 +1,18 @@
 use crate::containers;
 use crate::crd::NodeSpec;
-use crate::identity::Identities;
-use crate::ipfs::{generate_config, get_bootstrap_list};
+use crate::types::common::{Common, ipfs_ports};
 use k8s_openapi::api::apps::v1::{StatefulSet, StatefulSetSpec};
 use k8s_openapi::api::core::v1::{PodSpec, PodTemplateSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use kube::api::{ObjectMeta, Patch, PatchParams};
-use kube::core::ErrorResponse;
 use kube::{Api, Client, Error};
-use operator_common::types::{service, statefulset};
+use operator_common::types::statefulset;
 use operator_common::{
-    ActionType, external_address_name,
+    external_address_name,
     types::{configmap, load_balancer},
 };
 use std::collections::BTreeMap;
-use std::string::ToString;
-use tracing::{Level, event, info, instrument};
+use tracing::{Level, event, instrument};
 
 #[instrument(skip(client))]
 pub async fn deploy(
@@ -23,137 +20,19 @@ pub async fn deploy(
     name: String,
     namespace: String,
     spec: NodeSpec,
-    action: ActionType,
     labels: (BTreeMap<String, String>, BTreeMap<String, String>),
 ) -> Result<StatefulSet, Error> {
-    // Create p2p port
-    match load_balancer::create(
+    let mut common = Common::new(
         client.clone(),
         name.clone(),
+        None,
         namespace.clone(),
-        spec.kind.to_string(),
-        spec.replicas,
-        service::Port {
-            name: "p2p".to_string(),
-            port: spec.p2p_port.unwrap_or(4001),
-            protocol: "TCP".to_string(),
-        },
-        action,
-    )
-    .await
-    {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(Error::Api(ErrorResponse {
-                status: "Failed".to_string(),
-                message: err.to_string(),
-                reason: "Failed to create load balancers for p2p port".to_string(),
-                code: 418,
-            }));
-        }
-    }
-
-    let external_addrs = match load_balancer::get_external_ips(
-        client.clone(),
-        name.clone(),
-        namespace.clone(),
-        service::Port {
-            name: "p2p".to_string(),
-            port: spec.p2p_port.unwrap_or(4001),
-            protocol: "TCP".to_string(),
-        },
-        spec.replicas,
-    )
-    .await
-    {
-        Ok(ips) => ips,
-        Err(err) => {
-            return Err(Error::Api(ErrorResponse {
-                status: "Failed".to_string(),
-                message: err.to_string(),
-                reason: "Failed to create load balancers".to_string(),
-                code: 418,
-            }));
-        }
-    };
-
-    configmap::deploy(
-        client.clone(),
-        external_address_name(&name).as_str(),
-        &namespace,
-        external_addrs.clone(),
-        labels.0.clone(),
+        spec.clone(),
+        labels.clone(),
     )
     .await?;
-
-    let identities = match Identities::new(
-        client.clone(),
-        &name,
-        &namespace,
-        spec.replicas,
-        action,
-        labels.0.clone(),
-    )
-    .await
-    {
-        Ok(i) => i,
-        Err(err) => {
-            return Err(Error::Api(ErrorResponse {
-                status: "Failed".to_string(),
-                message: err.to_string(),
-                reason: "Failed to get identities".to_string(),
-                code: 418,
-            }));
-        }
-    };
-
-    let bootstrap_list =
-        match get_bootstrap_list(&name, identities.clone(), external_addrs.clone()).await {
-            Ok(i) => i,
-            Err(err) => {
-                return Err(Error::Api(ErrorResponse {
-                    status: "Failed".to_string(),
-                    message: err.to_string(),
-                    reason: "Failed to get bootstrap list".to_string(),
-                    code: 418,
-                }));
-            }
-        };
-
-    info!(
-        "Bootstrap list generated successfully: {:?}",
-        bootstrap_list
-    );
-
-    let configs = match generate_config(
-        client.clone(),
-        &name,
-        identities,
-        external_addrs,
-        bootstrap_list,
-        labels.0.clone(),
-    )
-    .await
-    {
-        Ok(config) => config,
-        Err(err) => {
-            return Err(Error::Api(ErrorResponse {
-                status: "Failed".to_string(),
-                message: err.to_string(),
-                reason: "Failed to generate config".to_string(),
-                code: 418,
-            }));
-        }
-    };
-
-    configmap::deploy(
-        client.clone(),
-        &format!("{name}-configs"),
-        &namespace,
-        configs.clone(),
-        labels.0.clone(),
-    )
-    .await?;
+    common.create_lb(client.clone(), ipfs_ports()).await?;
+    common.generate_configs(client.clone()).await?;
 
     let object: StatefulSet = StatefulSet {
         metadata: ObjectMeta {
@@ -212,6 +91,20 @@ pub async fn delete(client: Client, name: String, namespace: String) -> Result<(
     .await?;
 
     configmap::delete(client.clone(), format!("{name}-configs"), namespace.clone()).await?;
+    configmap::delete(
+        client.clone(),
+        format!("{name}-identities"),
+        namespace.clone(),
+    )
+    .await?;
+
+    configmap::delete(
+        client.clone(),
+        format!("{name}-startup-scripts"),
+        namespace.clone(),
+    )
+    .await?;
+
     configmap::delete(
         client.clone(),
         format!("{name}-identities"),

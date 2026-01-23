@@ -1,0 +1,22 @@
+apiVersion: gevulot.com/v1
+kind: IpfsNode
+metadata:
+  name: testnet-storage
+  namespace: ipfs
+spec:
+  replicas: 3
+  ipfs:
+    image:
+      repository: docker.io/ipfs/kubo
+      tag: v0.39.0
+    persistence:
+      size: 100Gi
+  ipfs_cluster:
+    image:
+      repository: docker.io/ipfs/ipfs-cluster
+      tag: v1.1.5
+    persistence:
+      size: 10Gi
+  kind: Storage
+  rust_log: info
+  bootstrap_name: bootstrap

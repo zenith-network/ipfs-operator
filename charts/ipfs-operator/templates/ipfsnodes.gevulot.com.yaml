@@ -21,17 +21,75 @@ spec:
           spec:
             description: Generate the Kubernetes wrapper struct `Document` from our Spec and Status struct
             properties:
-              image:
+              bootstrap_name:
+                nullable: true
+                type: string
+              ipfs:
                 properties:
-                  pullPolicy:
-                    nullable: true
-                    type: string
-                  repository:
-                    nullable: true
-                    type: string
-                  tag:
-                    nullable: true
-                    type: string
+                  image:
+                    properties:
+                      pullPolicy:
+                        nullable: true
+                        type: string
+                      repository:
+                        nullable: true
+                        type: string
+                      tag:
+                        nullable: true
+                        type: string
+                    type: object
+                  persistence:
+                    properties:
+                      accessMode:
+                        nullable: true
+                        type: string
+                      existingClaim:
+                        nullable: true
+                        type: string
+                      size:
+                        nullable: true
+                        type: string
+                      storageClassName:
+                        nullable: true
+                        type: string
+                    type: object
+                required:
+                - image
+                - persistence
+                type: object
+              ipfs_cluster:
+                nullable: true
+                properties:
+                  image:
+                    properties:
+                      pullPolicy:
+                        nullable: true
+                        type: string
+                      repository:
+                        nullable: true
+                        type: string
+                      tag:
+                        nullable: true
+                        type: string
+                    type: object
+                  persistence:
+                    properties:
+                      accessMode:
+                        nullable: true
+                        type: string
+                      existingClaim:
+                        nullable: true
+                        type: string
+                      size:
+                        nullable: true
+                        type: string
+                      storageClassName:
+                        nullable: true
+                        type: string
+                    type: object
+                required:
+                - image
+                - persistence
                 type: object
               kind:
                 enum:
@@ -42,30 +100,14 @@ spec:
                 format: int32
                 nullable: true
                 type: integer
-              persistence:
-                properties:
-                  accessMode:
-                    nullable: true
-                    type: string
-                  existingClaim:
-                    nullable: true
-                    type: string
-                  size:
-                    nullable: true
-                    type: string
-                  storageClassName:
-                    nullable: true
-                    type: string
-                type: object
               replicas:
                 format: int32
                 type: integer
               rust_log:
                 type: string
             required:
-            - image
+            - ipfs
             - kind
-            - persistence
             - replicas
             - rust_log
             type: object

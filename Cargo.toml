@@ -17,11 +17,6 @@ doc = false
 name = "crdgen"
 path = "src/crdgen.rs"
 
-[[bin]]
-doc = false
-name = "ipfs-test"
-path = "src/ipfs-test.rs"
-
 [lib]
 name = "controller"
 path = "src/lib.rs"
@@ -31,8 +26,8 @@ default = []
 telemetry = ["tonic", "opentelemetry-otlp"]
 
 [dependencies]
-operator-common = { path = "../operator-common" }
-#operator-common = { git = "https://github.com/zenith-network/operator-common", branch = "main" }
+#operator-common = { path = "../operator-common" }
+operator-common = { git = "https://github.com/zenith-network/operator-common", branch = "main" }
 actix-web = "4.4.0"
 futures = "0.3.28"
 tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"] }
@@ -58,6 +53,7 @@ libp2p = "0.56.0"
 rand = "0.8.5"
 libp2p-identity = { version = "0.2.13", features = ["ed25519", "rand"] }
 base64 = "0.22.1"
+hex = "0.4.2"
 
 [dev-dependencies]
 assert-json-diff = "2.0.2"

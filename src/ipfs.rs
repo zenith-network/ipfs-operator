@@ -1,13 +1,15 @@
 use std::collections::BTreeMap;
 
 use kube::Client;
-use operator_common::{Error, types::configmap::get_data};
+use operator_common::{
+    Error,
+    types::configmap::{self, get_data},
+};
 use serde_json::Value;
-use tracing::instrument;
+use tracing::{info, instrument};
 
 use crate::identity::Identities;
 
-const CONFIG_MAP_NAME: &str = "default-ipfs-config";
 const OPERATOR_NAMESPACE: &str = "ipfs-system";
 
 #[instrument(skip(client))]
@@ -19,7 +21,7 @@ pub async fn generate_config(
     bootstrap_list: Vec<String>,
     labels: BTreeMap<String, String>,
 ) -> Result<BTreeMap<String, String>, Error> {
-    let conf = get_data(client, CONFIG_MAP_NAME, OPERATOR_NAMESPACE).await?;
+    let conf = get_data(client, "default-ipfs-config", OPERATOR_NAMESPACE).await?;
 
     if !conf.contains_key("config") {
         return Err(Error::ConfigMapError(
@@ -59,6 +61,8 @@ pub async fn generate_config(
         configs.insert(format!("{idx}"), serde_json::to_string_pretty(&config)?);
     }
 
+    info!("bootstrap_list: {bootstrap_list:?}");
+    info!("configs: {configs:?}");
     Ok(configs)
 }
 
@@ -87,4 +91,36 @@ pub async fn get_bootstrap_list(
     }
 
     Ok(bootstrap_list)
+}
+
+#[instrument(skip(client))]
+pub async fn copy_default_startup_scripts(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    labels: BTreeMap<String, String>,
+) -> Result<(), Error> {
+    let scripts = get_data(
+        client.clone(),
+        "default-startup-scripts",
+        OPERATOR_NAMESPACE,
+    )
+    .await?;
+
+    if !scripts.contains_key("start_ipfs") || !scripts.contains_key("entrypoint.sh") {
+        return Err(Error::ConfigMapError(
+            "ConfigMap missing data at key 'start_ipfs' or 'entrypoint.sh'".to_string(),
+        ));
+    }
+
+    configmap::deploy(
+        client.clone(),
+        &format!("{name}-startup-scripts"),
+        namespace,
+        scripts,
+        labels,
+    )
+    .await?;
+
+    Ok(())
 }

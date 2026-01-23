@@ -2,7 +2,7 @@ use base64::prelude::*;
 use kube::Client;
 use libp2p::PeerId;
 use operator_common::{
-    ActionType, Error,
+    Error,
     types::configmap::{self},
 };
 use serde::{Deserialize, Serialize};
@@ -21,35 +21,40 @@ impl Identities {
         name: &str,
         namespace: &str,
         replicas: i32,
-        action: ActionType,
         labels: BTreeMap<String, String>,
     ) -> Result<Self, Error> {
-        debug!("Creating new identities, action: {:?}", action);
         let mut identities: BTreeMap<String, Identity> = BTreeMap::new();
-        for idx in 0..replicas {
-            identities.insert(format!("{name}-{idx}"), Identity::new()?);
-        }
 
-        configmap::deploy(
-            client.clone(),
-            &format!("{name}-identities"),
-            &namespace,
-            identity_to_string(&identities)?,
-            labels,
-        )
-        .await?;
+        if let Some(id) =
+            configmap::get_data_opt(client.clone(), &format!("{name}-identities"), namespace)
+                .await?
+        {
+            for (key, json) in id {
+                identities.insert(key, serde_json::from_str::<Identity>(&json)?);
+            }
+        } else {
+            debug!("Creating new identities");
+            for idx in 0..replicas {
+                identities.insert(format!("{name}-{idx}"), Identity::new()?);
+            }
+
+            configmap::deploy(
+                client.clone(),
+                &format!("{name}-identities"),
+                &namespace,
+                identity_to_string(&identities)?,
+                labels,
+            )
+            .await?;
+        };
 
         Ok(Self { ids: identities })
     }
 
-    #[instrument(skip(client))]
     pub async fn get(client: Client, name: &str, namespace: &str) -> Result<Self, Error> {
-        debug!("Getting identities");
-        let cm =
-            configmap::get_data(client.clone(), &format!("{name}-identities"), &namespace).await?;
-        Ok(Self {
-            ids: string_to_identity(&cm)?,
-        })
+        let identities =
+            string_to_identity(&configmap::get_data(client.clone(), name, namespace).await?)?;
+        Ok(Self { ids: identities })
     }
 }
 
@@ -82,14 +87,14 @@ impl Identities {
     // }
 }
 
-// fn string_to_identity(
-//     input: &BTreeMap<String, String>,
-// ) -> Result<BTreeMap<String, Identity>, serde_json::Error> {
-//     input
-//         .iter()
-//         .map(|(k, json)| Ok((k.clone(), serde_json::from_str::<Identity>(json)?)))
-//         .collect()
-// }
+fn string_to_identity(
+    input: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, Identity>, serde_json::Error> {
+    input
+        .iter()
+        .map(|(k, json)| Ok((k.clone(), serde_json::from_str::<Identity>(json)?)))
+        .collect()
+}
 
 fn identity_to_string(
     input: &BTreeMap<String, Identity>,
@@ -97,15 +102,6 @@ fn identity_to_string(
     input
         .iter()
         .map(|(k, v)| Ok((k.clone(), serde_json::to_string(v)?)))
-        .collect()
-}
-
-fn string_to_identity(
-    input: &BTreeMap<String, String>,
-) -> Result<BTreeMap<String, Identity>, serde_json::Error> {
-    input
-        .iter()
-        .map(|(k, v)| Ok((k.clone(), serde_json::from_str(v)?)))
         .collect()
 }
 
