@@ -1,52 +1,31 @@
 use crate::containers;
 use crate::crd::NodeSpec;
-use crate::identity::Identities;
-use crate::ipfs::{generate_config, get_bootstrap_list};
+use crate::identity::Identity;
+use crate::types::common::{Common, ipfs_cluster_ports, ipfs_ports};
+use k8s_openapi::ByteString;
 use k8s_openapi::api::apps::v1::{StatefulSet, StatefulSetSpec};
 use k8s_openapi::api::core::v1::{PodSpec, PodTemplateSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use kube::api::{ObjectMeta, Patch, PatchParams};
 use kube::core::ErrorResponse;
 use kube::{Api, Client, Error};
-use operator_common::types::{configmap, load_balancer, service, statefulset};
-use operator_common::{ActionType, external_address_name};
+use operator_common::external_address_name;
+use operator_common::types::{configmap, load_balancer, secret, statefulset};
+use rand::{Rng, thread_rng};
 use std::collections::BTreeMap;
 use std::string::ToString;
 use tracing::{Level, event, info, instrument};
 
-/// Creates a new deployment of `n` pods with the `inanimate/echo-server:latest` docker image inside,
-/// where `n` is the number of `replicas` given.
-/// Note: It is assumed the resource does not already exists for simplicity. Returns an `Error` if it does.
-/// # Arguments
-/// - `client` - A Kubernetes client to create the deployment with.
-/// - `name` - Name of the deployment to be created
-/// - `replicas` - Number of pod replicas for the Deployment to contain
-/// - `namespace` - Namespace to create the Kubernetes Deployment in.
 #[instrument(skip(client))]
 pub async fn deploy(
     client: Client,
     name: String,
     namespace: String,
     spec: NodeSpec,
-    action: ActionType,
     labels: (BTreeMap<String, String>, BTreeMap<String, String>),
 ) -> Result<StatefulSet, Error> {
-    // Create p2p port
-    match load_balancer::create(
-        client.clone(),
-        name.clone(),
-        namespace.clone(),
-        spec.kind.to_string(),
-        spec.replicas,
-        service::Port {
-            name: "p2p".to_string(),
-            port: spec.p2p_port.unwrap_or(4001),
-            protocol: "TCP".to_string(),
-        },
-        action,
-    )
-    .await
-    {
+    // Ensure secrets exist
+    match upsert_peer_info(client.clone(), &name, &namespace, labels.clone()).await {
         Ok(_) => {}
         Err(err) => {
             return Err(Error::Api(ErrorResponse {
@@ -56,57 +35,15 @@ pub async fn deploy(
                 code: 418,
             }));
         }
-    }
-
-    let external_addrs = match load_balancer::get_external_ips(
-        client.clone(),
-        name.clone(),
-        namespace.clone(),
-        service::Port {
-            name: "p2p".to_string(),
-            port: spec.p2p_port.unwrap_or(4001),
-            protocol: "TCP".to_string(),
-        },
-        spec.replicas,
-    )
-    .await
-    {
-        Ok(ips) => ips,
-        Err(err) => {
-            return Err(Error::Api(ErrorResponse {
-                status: "Failed".to_string(),
-                message: err.to_string(),
-                reason: "Failed to create load balancers".to_string(),
-                code: 418,
-            }));
-        }
     };
 
-    configmap::deploy(
-        client.clone(),
-        external_address_name(&name).as_str(),
-        &namespace,
-        external_addrs.clone(),
-        labels.0.clone(),
-    )
-    .await?;
-
-    let identities = match Identities::new(
-        client.clone(),
-        &name,
-        &namespace,
-        spec.replicas,
-        action,
-        labels.0.clone(),
-    )
-    .await
-    {
-        Ok(i) => i,
+    match upsert_cluster_secret(client.clone(), &name, &namespace, labels.clone()).await {
+        Ok(_) => {}
         Err(err) => {
             return Err(Error::Api(ErrorResponse {
                 status: "Failed".to_string(),
                 message: err.to_string(),
-                reason: "Failed to get identities".to_string(),
+                reason: "Failed to create load balancers for p2p port".to_string(),
                 code: 418,
             }));
         }
@@ -117,96 +54,6 @@ pub async fn deploy(
         .clone()
         .unwrap_or("bootstrap".to_string());
 
-    let bootstrap_identities =
-        match Identities::get(client.clone(), &bootstrap_name, &namespace).await {
-            Ok(i) => i,
-            Err(err) => {
-                return Err(Error::Api(ErrorResponse {
-                    status: "Failed".to_string(),
-                    message: err.to_string(),
-                    reason: "Failed to get identities".to_string(),
-                    code: 418,
-                }));
-            }
-        };
-
-    let bootstrap_external_addrs = match load_balancer::get_external_ips(
-        client.clone(),
-        bootstrap_name.clone(),
-        namespace.clone(),
-        service::Port {
-            name: "p2p".to_string(),
-            port: spec.p2p_port.unwrap_or(4001),
-            protocol: "TCP".to_string(),
-        },
-        spec.replicas,
-    )
-    .await
-    {
-        Ok(ips) => ips,
-        Err(err) => {
-            return Err(Error::Api(ErrorResponse {
-                status: "Failed".to_string(),
-                message: err.to_string(),
-                reason: "Failed to create load balancers".to_string(),
-                code: 418,
-            }));
-        }
-    };
-
-    let bootstrap_list = match get_bootstrap_list(
-        &name,
-        bootstrap_identities.clone(),
-        bootstrap_external_addrs.clone(),
-    )
-    .await
-    {
-        Ok(i) => i,
-        Err(err) => {
-            return Err(Error::Api(ErrorResponse {
-                status: "Failed".to_string(),
-                message: err.to_string(),
-                reason: "Failed to get bootstrap list".to_string(),
-                code: 418,
-            }));
-        }
-    };
-
-    info!(
-        "Bootstrap list generated successfully: {:?}",
-        bootstrap_list
-    );
-
-    let configs = match generate_config(
-        client.clone(),
-        &name,
-        identities,
-        external_addrs,
-        bootstrap_list,
-        labels.0.clone(),
-    )
-    .await
-    {
-        Ok(config) => config,
-        Err(err) => {
-            return Err(Error::Api(ErrorResponse {
-                status: "Failed".to_string(),
-                message: err.to_string(),
-                reason: "Failed to generate config".to_string(),
-                code: 418,
-            }));
-        }
-    };
-
-    configmap::deploy(
-        client.clone(),
-        &format!("{name}-configs"),
-        &namespace,
-        configs.clone(),
-        labels.0.clone(),
-    )
-    .await?;
-
     let mut volumes = containers::ipfs::volumes(&name, &bootstrap_name);
     let mut containers = vec![containers::ipfs::container(&name, &spec)];
 
@@ -216,16 +63,32 @@ pub async fn deploy(
         labels.clone(),
     )];
 
-    if let Some(ipfs_cluster) = spec.ipfs_cluster {
+    let mut ports = ipfs_ports();
+
+    if let Some(ipfs_cluster) = spec.ipfs_cluster.clone() {
         pvc.push(containers::pvc(
             "ipfs-cluster-data",
             ipfs_cluster.persistence.clone(),
             labels.clone(),
         ));
 
-        volumes.extend(containers::ipfs_cluster::volumes().iter().cloned());
+        volumes.extend(containers::ipfs_cluster::volumes(&name).iter().cloned());
         containers.push(containers::ipfs_cluster::container(&name, &ipfs_cluster));
+
+        ports.append(&mut ipfs_cluster_ports());
     }
+
+    let mut common = Common::new(
+        client.clone(),
+        name.clone(),
+        Some(bootstrap_name.clone()),
+        namespace.clone(),
+        spec.clone(),
+        labels.clone(),
+    )
+    .await?;
+    common.create_lb(client.clone(), ports).await?;
+    common.generate_configs(client.clone()).await?;
 
     // Definition of the deployment. Alternatively, a YAML representation could be used as well.
     let object: StatefulSet = StatefulSet {
@@ -273,6 +136,7 @@ pub async fn deploy(
 pub async fn delete(client: Client, name: String, namespace: String) -> Result<(), Error> {
     event!(Level::INFO, name, namespace, "Deleting StatefulSet");
     statefulset::delete(client.clone(), name.clone(), namespace.clone()).await?;
+
     configmap::delete(
         client.clone(),
         external_address_name(&name),
@@ -281,6 +145,7 @@ pub async fn delete(client: Client, name: String, namespace: String) -> Result<(
     .await?;
 
     configmap::delete(client.clone(), format!("{name}-configs"), namespace.clone()).await?;
+
     configmap::delete(
         client.clone(),
         format!("{name}-identities"),
@@ -288,5 +153,123 @@ pub async fn delete(client: Client, name: String, namespace: String) -> Result<(
     )
     .await?;
 
+    secret::delete(
+        client.clone(),
+        format!("ipfs-cluster-{name}-cluster-secret"),
+        namespace.clone(),
+    )
+    .await?;
+
+    secret::delete(
+        client.clone(),
+        format!("ipfs-cluster-{name}-peer-info"),
+        namespace.clone(),
+    )
+    .await?;
+
+    configmap::delete(
+        client.clone(),
+        format!("{name}-startup-scripts"),
+        namespace.clone(),
+    )
+    .await?;
+
+    // service::delete_cluster_ips(client.clone(), name.clone(), namespace.clone()).await?;
     load_balancer::delete(client, name, namespace).await
+}
+
+#[instrument(skip(client))]
+pub async fn upsert_peer_info(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    labels: (BTreeMap<String, String>, BTreeMap<String, String>),
+) -> Result<(), operator_common::Error> {
+    match secret::get_data(
+        client.clone(),
+        format!("ipfs-cluster-{name}-peer-info").as_str(),
+        &namespace,
+    )
+    .await
+    {
+        Ok(i) => {
+            if i.contains_key("bootstrap-peer-id") && i.contains_key("bootstrap-peer-priv-key") {
+                return Ok(());
+            } else {
+                {}
+            }
+        }
+        Err(_) => {}
+    };
+
+    let identity = Identity::new()?;
+
+    let data = BTreeMap::from([
+        (
+            "bootstrap-peer-id".to_string(),
+            ByteString(identity.peer_id.into_bytes()),
+        ),
+        (
+            "bootstrap-peer-priv-key".to_string(),
+            ByteString(identity.priv_key.into_bytes()),
+        ),
+    ]);
+
+    secret::deploy(
+        client,
+        format!("ipfs-cluster-{name}-peer-info").as_str(),
+        namespace,
+        data,
+        labels.0,
+    )
+    .await?;
+
+    Ok(())
+}
+
+#[instrument(skip(client))]
+pub async fn upsert_cluster_secret(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    labels: (BTreeMap<String, String>, BTreeMap<String, String>),
+) -> Result<(), operator_common::Error> {
+    match secret::get_data(
+        client.clone(),
+        format!("ipfs-cluster-{name}-cluster-secret").as_str(),
+        &namespace,
+    )
+    .await
+    {
+        Ok(i) => {
+            if i.contains_key("cluster-secret") {
+                return Ok(());
+            } else {
+                {}
+            }
+        }
+        Err(_) => {}
+    };
+
+    let mut cluster_secret = [0u8; 32];
+    thread_rng().try_fill(&mut cluster_secret[..])?;
+    let encoded_secret = hex::encode(cluster_secret);
+
+    info!("Generated cluster secret: {}", encoded_secret);
+
+    let data = BTreeMap::from([(
+        "cluster-secret".to_string(),
+        ByteString(encoded_secret.into()),
+    )]);
+
+    secret::deploy(
+        client,
+        format!("ipfs-cluster-{name}-cluster-secret").as_str(),
+        namespace,
+        data,
+        labels.0,
+    )
+    .await?;
+
+    Ok(())
 }

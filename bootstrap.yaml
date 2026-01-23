@@ -5,7 +5,7 @@ metadata:
   name: bootstrap
   namespace: ipfs
 spec:
-  replicas: 2
+  replicas: 3
   ipfs:
     image:
       repository: docker.io/ipfs/kubo

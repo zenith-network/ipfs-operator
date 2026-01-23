@@ -26,14 +26,14 @@ rules:
     resources: ["ipfsnodes", "ipfsnode/finalizers"]
     verbs: ["get", "list", "watch", "patch", "update"]
   - apiGroups: [""]
-    resources: ["services", "configmaps"]
+    resources: ["services", "configmaps", "secrets"]
     verbs: ["create", "delete", "get", "patch", "update", "list", "watch"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
     verbs: ["create", "delete"]
   - apiGroups: ["apps"]
     resources: ["statefulsets"]
-    verbs: ["create", "delete"]
+    verbs: ["create", "delete", "patch", "update", "list", "get"]
 
 ---
 # Binding the role to the account

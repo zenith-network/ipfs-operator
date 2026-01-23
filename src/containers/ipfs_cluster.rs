@@ -1,12 +1,15 @@
 use k8s_openapi::{
     api::core::v1::{
-        Container, ContainerPort, EnvVar, PersistentVolumeClaimVolumeSource, Probe,
-        TCPSocketAction, Volume, VolumeMount,
+        ConfigMapVolumeSource, Container, EnvVar, EnvVarSource, PersistentVolumeClaimVolumeSource,
+        Probe, SecretKeySelector, TCPSocketAction, Volume, VolumeMount,
     },
     apimachinery::pkg::util::intstr::IntOrString,
 };
 
-use crate::IpfsClusterSpec;
+use crate::{
+    IpfsClusterSpec,
+    types::common::{generate_container_ports, ipfs_cluster_ports},
+};
 
 pub fn container(name: &str, spec: &IpfsClusterSpec) -> Container {
     Container {
@@ -17,34 +20,55 @@ pub fn container(name: &str, spec: &IpfsClusterSpec) -> Container {
             spec.image.tag.clone().unwrap_or_default()
         )),
         image_pull_policy: Some(spec.image.pull_policy.clone().unwrap_or_default()),
-        ports: Some(vec![
-            ContainerPort {
-                name: Some("api-http".to_owned()),
-                container_port: 9094,
-                ..ContainerPort::default()
+        ports: Some(generate_container_ports(ipfs_cluster_ports())),
+        command: Some(vec!["sh".to_owned(), "/custom/entrypoint.sh".to_owned()]),
+        volume_mounts: Some(vec![
+            VolumeMount {
+                mount_path: "/data/ipfs-cluster".to_string(),
+                name: "ipfs-cluster-data".to_string(),
+                ..VolumeMount::default()
             },
-            ContainerPort {
-                name: Some("proxy-http".to_owned()),
-                container_port: 9095,
-                ..ContainerPort::default()
-            },
-            ContainerPort {
-                name: Some("cluster-swarm".to_owned()),
-                container_port: 9096,
-                ..ContainerPort::default()
+            VolumeMount {
+                mount_path: "/custom".to_string(),
+                name: "ipfs-cluster-startup-scripts".to_string(),
+                ..VolumeMount::default()
             },
         ]),
-        volume_mounts: Some(vec![VolumeMount {
-            mount_path: "/data/ipfs-cluster".to_string(),
-            name: "ipfs-cluster-data".to_string(),
-            ..VolumeMount::default()
-        }]),
         env: Some(vec![
             EnvVar {
                 name: "CLUSTER_SECRET".to_owned(),
-                value: Some(
-                    "20C359B473A9E2A9B00C3FE23222A566CF0517ADB2C3E1796322F5B0F7E390BB".to_owned(),
-                ),
+                value_from: Some(EnvVarSource {
+                    secret_key_ref: Some(SecretKeySelector {
+                        name: Some(format!("ipfs-cluster-{name}-cluster-secret")),
+                        key: "cluster-secret".to_string(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+                ..EnvVar::default()
+            },
+            EnvVar {
+                name: "BOOTSTRAP_PEER_ID".to_owned(),
+                value_from: Some(EnvVarSource {
+                    secret_key_ref: Some(SecretKeySelector {
+                        name: Some(format!("ipfs-cluster-{name}-peer-info")),
+                        key: "bootstrap-peer-id".to_string(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            EnvVar {
+                name: "BOOTSTRAP_PEER_PRIV_KEY".to_owned(),
+                value_from: Some(EnvVarSource {
+                    secret_key_ref: Some(SecretKeySelector {
+                        name: Some(format!("ipfs-cluster-{name}-peer-info")),
+                        key: "bootstrap-peer-priv-key".to_string(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
                 ..EnvVar::default()
             },
             EnvVar {
@@ -58,13 +82,18 @@ pub fn container(name: &str, spec: &IpfsClusterSpec) -> Container {
                 ..EnvVar::default()
             },
             EnvVar {
-                name: "CLUSTER_MONITORPINGINTERVAL".to_owned(),
-                value: Some("2s".to_owned()),
+                name: "CLUSTER_MONITOR_PING_INTERVAL".to_owned(),
+                value: Some("3m".to_owned()),
                 ..EnvVar::default()
             },
             EnvVar {
                 name: "CLUSTER_CRDT_TRUSTEDPEERS".to_owned(),
                 value: Some("*".to_owned()),
+                ..EnvVar::default()
+            },
+            EnvVar {
+                name: "SVC_NAME".to_owned(),
+                value: Some(format!("{name}")),
                 ..EnvVar::default()
             },
         ]),
@@ -82,13 +111,24 @@ pub fn container(name: &str, spec: &IpfsClusterSpec) -> Container {
     }
 }
 
-pub fn volumes() -> Vec<Volume> {
-    vec![Volume {
-        name: "ipfs-cluster-data".to_string(),
-        persistent_volume_claim: Some(PersistentVolumeClaimVolumeSource {
-            claim_name: "ipfs-cluster-data".to_string(),
-            ..PersistentVolumeClaimVolumeSource::default()
-        }),
-        ..Volume::default()
-    }]
+pub fn volumes(name: &str) -> Vec<Volume> {
+    vec![
+        Volume {
+            name: "ipfs-cluster-data".to_string(),
+            persistent_volume_claim: Some(PersistentVolumeClaimVolumeSource {
+                claim_name: "ipfs-cluster-data".to_string(),
+                ..PersistentVolumeClaimVolumeSource::default()
+            }),
+            ..Volume::default()
+        },
+        Volume {
+            name: "ipfs-cluster-startup-scripts".to_string(),
+            config_map: Some(ConfigMapVolumeSource {
+                name: Some(format!("{name}-startup-scripts")),
+                default_mode: Some(0o755),
+                ..ConfigMapVolumeSource::default()
+            }),
+            ..Volume::default()
+        },
+    ]
 }

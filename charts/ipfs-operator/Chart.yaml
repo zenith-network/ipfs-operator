@@ -2,5 +2,5 @@ apiVersion: v2
 name: ipfs-operator
 description: ipfs operator
 type: application
-version: 0.0.1
-appVersion: test22
+version: 0.0.3
+appVersion: v0.3.0

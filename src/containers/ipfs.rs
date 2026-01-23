@@ -1,12 +1,15 @@
 use k8s_openapi::{
     api::core::v1::{
-        ConfigMapVolumeSource, Container, ContainerPort, EnvVar, ExecAction,
-        PersistentVolumeClaimVolumeSource, Probe, TCPSocketAction, Volume, VolumeMount,
+        ConfigMapVolumeSource, Container, EnvVar, ExecAction, PersistentVolumeClaimVolumeSource,
+        Probe, TCPSocketAction, Volume, VolumeMount,
     },
     apimachinery::pkg::util::intstr::IntOrString,
 };
 
-use crate::NodeSpec;
+use crate::{
+    NodeSpec,
+    types::common::{generate_container_ports, ipfs_ports},
+};
 
 pub fn container(name: &str, spec: &NodeSpec) -> Container {
     Container {
@@ -17,34 +20,7 @@ pub fn container(name: &str, spec: &NodeSpec) -> Container {
             spec.ipfs.image.tag.clone().unwrap_or_default()
         )),
         image_pull_policy: Some(spec.ipfs.image.pull_policy.clone().unwrap_or_default()),
-        ports: Some(vec![
-            ContainerPort {
-                name: Some("swarm".to_owned()),
-                container_port: 4001,
-                ..ContainerPort::default()
-            },
-            ContainerPort {
-                name: Some("swarm-udp".to_owned()),
-                container_port: 4002,
-                protocol: Some("UDP".to_owned()),
-                ..ContainerPort::default()
-            },
-            ContainerPort {
-                name: Some("api".to_owned()),
-                container_port: 5001,
-                ..ContainerPort::default()
-            },
-            ContainerPort {
-                name: Some("ws".to_owned()),
-                container_port: 8081,
-                ..ContainerPort::default()
-            },
-            ContainerPort {
-                name: Some("http".to_owned()),
-                container_port: 8080,
-                ..ContainerPort::default()
-            },
-        ]),
+        ports: Some(generate_container_ports(ipfs_ports())),
         command: Some(vec![
             "sh".to_owned(),
             "-c".to_owned(),
@@ -63,7 +39,7 @@ pub fn container(name: &str, spec: &NodeSpec) -> Container {
             },
             VolumeMount {
                 mount_path: "/usr/local/bin/start_ipfs".to_string(),
-                name: "startup-scripts".to_string(),
+                name: "ipfs-startup-scripts".to_string(),
                 sub_path: Some("start_ipfs".to_string()),
                 ..VolumeMount::default()
             },
@@ -125,7 +101,7 @@ pub fn volumes(name: &str, bootstrap_name: &str) -> Vec<Volume> {
             ..Volume::default()
         },
         Volume {
-            name: "startup-scripts".to_string(),
+            name: "ipfs-startup-scripts".to_string(),
             config_map: Some(ConfigMapVolumeSource {
                 name: Some(format!("{name}-startup-scripts")),
                 default_mode: Some(0o755),

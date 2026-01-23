@@ -12,7 +12,7 @@ use kube::{
         watcher::Config,
     },
 };
-use operator_common::{ActionType, Error, Result, labels, selector_labels};
+use operator_common::{Error, Result, labels, selector_labels};
 use serde::Serialize;
 use std::sync::Arc;
 use tokio::{sync::RwLock, time::Duration};
@@ -53,12 +53,6 @@ impl IpfsNode {
         let namespace = self.namespace().unwrap();
         let name = self.name_any();
 
-        let action = if self.metadata.finalizers.is_none() {
-            ActionType::Create
-        } else {
-            ActionType::Update
-        };
-
         match self.spec.kind {
             NodeKind::BootStrap => {
                 bootstrap::deploy(
@@ -66,7 +60,6 @@ impl IpfsNode {
                     name.clone(),
                     namespace.clone(),
                     self.spec.clone(),
-                    action,
                     (
                         labels(name.clone(), NodeKind::BootStrap.to_string()),
                         selector_labels(name.clone(), NodeKind::BootStrap.to_string()),
@@ -80,7 +73,6 @@ impl IpfsNode {
                     name.clone(),
                     namespace.clone(),
                     self.spec.clone(),
-                    action,
                     (
                         labels(name.clone(), NodeKind::Storage.to_string()),
                         selector_labels(name.clone(), NodeKind::Storage.to_string()),
