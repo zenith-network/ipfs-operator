@@ -1,61 +1,42 @@
-[package]
-name = "ipfs-operator"
-version = "0.5.1"
-authors = ["Brian Hechinger <brian@zenith.network>"]
-edition = "2024"
-default-run = "controller"
-license = "Apache-2.0"
-publish = false
+[workspace]
+members = [
+    "crates/operator",
+    "crates/bootstrap-web",
+]
+exclude = []
+resolver = "2"
 
-[[bin]]
-doc = false
-name = "controller"
-path = "src/main.rs"
-
-[[bin]]
-doc = false
-name = "crdgen"
-path = "src/crdgen.rs"
-
-[lib]
-name = "controller"
-path = "src/lib.rs"
-
-[features]
-default = []
-telemetry = ["tonic", "opentelemetry-otlp"]
-
-[dependencies]
+[workspace.dependencies]
 #operator-common = { path = "../operator-common" }
 operator-common = { git = "https://github.com/zenith-network/operator-common", branch = "main" }
 actix-web = "4.4.0"
 futures = "0.3.28"
-tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"] }
-k8s-openapi = { version = "0.21.1", features = ["latest"] }
-schemars = { version = "0.8.12", features = ["chrono"] }
-serde = { version = "1.0.185", features = ["derive"] }
+tokio = { version = "1.32.0", default-features = false }
+k8s-openapi = { version = "0.21.1", default-features = false }
+schemars = { version = "0.8.12", default-features = false }
+serde = { version = "1.0.185", default-features = false }
 serde_json = "1.0.105"
 serde_yaml = "0.9.25"
 prometheus = "0.13.3"
-chrono = { version = "0.4.26", features = ["serde"] }
+chrono = { version = "0.4.26", default-features = false }
 tracing = "0.1.37"
-tracing-subscriber = { version = "0.3.17", features = ["json", "env-filter"] }
+tracing-subscriber = { version = "0.3.17", default-features = false }
 tracing-opentelemetry = "0.20.0"
-opentelemetry = { version = "0.20.0", features = ["trace", "rt-tokio"] }
-opentelemetry-otlp = { version = "0.13.0", features = ["tokio"], optional = true }
-tonic = { version = "0.9", optional = true }
+opentelemetry = { version = "0.20.0", default-features = false }
+opentelemetry-otlp = { version = "0.13.0", default-features = false }
+tonic = "0.9"
 thiserror = "1.0.47"
 anyhow = "1.0.75"
 kube-runtime = "0.90.0"
-kube = { version = "0.90.0", features = ["runtime", "client", "derive" ]}
-ed25519-dalek = { version = "2.2.0", features = ["rand_core"] }
+kube = { version = "0.90.0", default-features = false }
+ed25519-dalek = { version = "2.2.0", default-features = false }
 libp2p = "0.56.0"
 rand = "0.8.5"
-libp2p-identity = { version = "0.2.13", features = ["ed25519", "rand"] }
+libp2p-identity = { version = "0.2.13", default-features = false }
 base64 = "0.22.1"
 hex = "0.4.2"
 
-[dev-dependencies]
+# dev-dependencies
 assert-json-diff = "2.0.2"
 http = "1"
 hyper = "1"

@@ -1,0 +1,62 @@
+[package]
+name = "ipfs-operator"
+version = "0.5.1"
+authors = ["Brian Hechinger <brian@zenith.network>"]
+edition = "2024"
+default-run = "controller"
+license = "Apache-2.0"
+publish = false
+
+[[bin]]
+doc = false
+name = "controller"
+path = "src/main.rs"
+
+[[bin]]
+doc = false
+name = "crdgen"
+path = "src/crdgen.rs"
+
+[lib]
+name = "controller"
+path = "src/lib.rs"
+
+[features]
+default = []
+telemetry = ["tonic", "opentelemetry-otlp"]
+
+[dependencies]
+#operator-common = { path = "../operator-common" }
+operator-common.workspace = true
+actix-web.workspace = true
+futures.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+k8s-openapi = { workspace = true, features = ["latest"] }
+schemars = { workspace = true, features = ["chrono"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+serde_yaml.workspace = true
+prometheus.workspace = true
+chrono = { workspace = true, features = ["serde"] }
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["json", "env-filter", "fmt"] }
+tracing-opentelemetry.workspace = true
+opentelemetry = { workspace = true, features = ["trace", "rt-tokio"] }
+opentelemetry-otlp = { workspace = true, features = ["tokio"], optional = true }
+tonic = { workspace = true, optional = true }
+thiserror.workspace = true
+anyhow.workspace = true
+kube-runtime.workspace = true
+kube = { workspace = true, features = ["runtime", "client", "derive" ]}
+ed25519-dalek = { workspace = true, features = ["rand_core"] }
+libp2p.workspace = true
+rand.workspace = true
+libp2p-identity = { workspace = true, features = ["ed25519", "rand"] }
+base64.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+assert-json-diff.workspace = true
+http.workspace = true
+hyper.workspace = true
+tower-test.workspace = true
