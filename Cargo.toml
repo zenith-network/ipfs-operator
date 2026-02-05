@@ -35,6 +35,7 @@ rand = "0.8.5"
 libp2p-identity = { version = "0.2.13", default-features = false }
 base64 = "0.22.1"
 hex = "0.4.2"
+actix-web-httpauth = "0.8.2"
 
 # dev-dependencies
 assert-json-diff = "2.0.2"

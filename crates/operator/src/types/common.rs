@@ -203,8 +203,7 @@ impl Common {
             (self.identities.clone(), self.external_addrs.clone())
         };
 
-        self.bootstrap_list = match get_bootstrap_list(&self.name, identities, external_addrs).await
-        {
+        self.bootstrap_list = match get_bootstrap_list(identities, external_addrs).await {
             Ok(i) => i,
             Err(err) => {
                 return Err(Error::Api(ErrorResponse {

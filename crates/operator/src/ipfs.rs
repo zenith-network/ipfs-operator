@@ -68,7 +68,6 @@ pub async fn generate_config(
 
 #[instrument]
 pub async fn get_bootstrap_list(
-    name: &str,
     identities: Identities,
     external_addrs: BTreeMap<String, String>,
 ) -> Result<Vec<String>, Error> {

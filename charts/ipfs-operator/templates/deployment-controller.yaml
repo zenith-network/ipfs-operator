@@ -30,8 +30,8 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
       - name: {{ .Chart.Name }}
-        image: {{ .Values.image.repository }}:{{ include "controller.tag" . }}
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        image: {{ .Values.images.controller.repository }}:{{ include "controller.tag" . }}
+        imagePullPolicy: {{ .Values.images.controller.pullPolicy }}
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}
         resources:

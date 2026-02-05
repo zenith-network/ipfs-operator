@@ -12,5 +12,5 @@ mod metrics;
 pub use metrics::Metrics;
 
 mod containers;
-mod identity;
-mod ipfs;
+pub mod identity;
+pub mod ipfs;
