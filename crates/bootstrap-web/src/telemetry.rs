@@ -60,7 +60,6 @@ pub async fn init() {
     #[cfg(not(feature = "telemetry"))]
     let collector = Registry::default().with(logger).with(env_filter);
 
-    tracing_log::LogTracer::init().expect("failed to initialize log tracer");
     // Initialize tracing
     tracing::subscriber::set_global_default(collector).unwrap();
 }

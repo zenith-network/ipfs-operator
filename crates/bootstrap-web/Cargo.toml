@@ -27,5 +27,3 @@ kube = { workspace = true, features = ["runtime", "client", "derive" ]}
 k8s-openapi = { workspace = true, features = ["latest"] }
 serde.workspace = true
 actix-web-httpauth.workspace = true
-tracing-actix-web = "0.7.21"
-tracing-log = "0.2.0"

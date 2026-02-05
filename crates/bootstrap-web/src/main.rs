@@ -1,7 +1,6 @@
 #![allow(unused_imports, unused_variables)]
 use actix_web::{
-    App, HttpRequest, HttpResponse, HttpServer, Responder, get,
-    middleware::{self, Compat},
+    App, HttpRequest, HttpResponse, HttpServer, Responder, get, middleware,
     web::{self, Data},
 };
 use bootstrap_web::{bootstrap::get_list, swarm, telemetry};
@@ -10,7 +9,6 @@ use kube::{Api, Client, api::ListParams};
 use prometheus::{Encoder, TextEncoder};
 use serde::Deserialize;
 use tracing::{info, instrument};
-use tracing_actix_web::TracingLogger;
 
 #[derive(Clone)]
 pub struct State {
@@ -111,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
     let server = HttpServer::new(move || {
         App::new()
             .app_data(Data::new(state.clone()))
-            .wrap(TracingLogger::default())
+            .wrap(middleware::Logger::default().exclude("/health"))
             .service(index)
             .service(health)
             .service(metrics)
@@ -119,7 +117,6 @@ async fn main() -> anyhow::Result<()> {
             .service(default_swarm_key)
             .service(seeds)
             .service(swarm_key)
-            .service(web::scope("/").wrap(Compat::new(TracingLogger::default())))
     })
     .bind("0.0.0.0:8080")?
     .shutdown_timeout(5);
