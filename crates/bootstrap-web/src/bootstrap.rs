@@ -7,7 +7,7 @@ use tracing::{info, instrument};
 pub async fn get_list(client: Client, name: &str, namespace: &str) -> Result<Vec<String>, Error> {
     info!("Getting bootstrap list: {}", name);
     let (identities, external_addrs) = (
-        match Identities::get(client.clone(), &format!("{name}-identities"), &namespace).await {
+        match Identities::get(client.clone(), &format!("{name}-identities"), namespace).await {
             Ok(i) => i,
             Err(err) => {
                 return Err(Error::Api(ErrorResponse {
@@ -21,7 +21,7 @@ pub async fn get_list(client: Client, name: &str, namespace: &str) -> Result<Vec
         match configmap::get_data(
             client.clone(),
             format!("{name}-external-addresses").as_str(),
-            &namespace,
+            namespace,
         )
         .await
         {
