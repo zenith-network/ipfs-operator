@@ -4,6 +4,7 @@ use actix_web::{
     web::{self, Data},
 };
 use bootstrap_web::{bootstrap::get_list, swarm, telemetry};
+use env_logger::Env;
 use k8s_openapi::api::core::v1::ConfigMap;
 use kube::{Api, Client, api::ListParams};
 use prometheus::{Encoder, TextEncoder};
@@ -105,6 +106,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = State::new().await;
     info!("namespace: {}", state.client.default_namespace());
+    env_logger::init_from_env(Env::default().default_filter_or("info"));
 
     let server = HttpServer::new(move || {
         App::new()

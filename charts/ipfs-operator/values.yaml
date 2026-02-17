@@ -4,7 +4,7 @@ images:
     pullPolicy: IfNotPresent
   web:
     repository: quay.io/gevulot/bootstrap-web
-    tag: v0.2.0
+    tag: v0.3.0
     pullPolicy: IfNotPresent
 
 imagePullSecrets: []
