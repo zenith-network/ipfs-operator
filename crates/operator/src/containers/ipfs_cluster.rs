@@ -93,7 +93,7 @@ pub fn container(name: &str, spec: &IpfsClusterSpec) -> Container {
             },
             EnvVar {
                 name: "SVC_NAME".to_owned(),
-                value: Some(format!("{name}")),
+                value: Some(name.to_owned()),
                 ..EnvVar::default()
             },
         ]),

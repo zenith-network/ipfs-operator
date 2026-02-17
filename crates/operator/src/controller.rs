@@ -23,7 +23,7 @@ pub static IPFSNODE_FINALIZER: &str = "ipfsnodes.gevulot.com/finalizer";
 #[instrument(skip(ctx, ipfsnode), fields(trace_id))]
 async fn reconcile(ipfsnode: Arc<IpfsNode>, ctx: Arc<Context>) -> Result<Action> {
     let trace_id = telemetry::get_trace_id();
-    Span::current().record("trace_id", &field::display(&trace_id));
+    Span::current().record("trace_id", field::display(&trace_id));
     let _timer = ctx.metrics.count_and_measure();
     ctx.diagnostics.write().await.last_event = Utc::now();
     let ns = ipfsnode.namespace().unwrap(); // ipfsnode is namespace scoped

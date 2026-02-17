@@ -185,21 +185,18 @@ pub async fn upsert_peer_info(
     namespace: &str,
     labels: (BTreeMap<String, String>, BTreeMap<String, String>),
 ) -> Result<(), operator_common::Error> {
-    match secret::get_data(
+    if let Ok(i) = secret::get_data(
         client.clone(),
         format!("ipfs-cluster-{name}-peer-info").as_str(),
-        &namespace,
+        namespace,
     )
     .await
     {
-        Ok(i) => {
-            if i.contains_key("bootstrap-peer-id") && i.contains_key("bootstrap-peer-priv-key") {
-                return Ok(());
-            } else {
-                {}
-            }
+        if i.contains_key("bootstrap-peer-id") && i.contains_key("bootstrap-peer-priv-key") {
+            return Ok(());
+        } else {
+            {}
         }
-        Err(_) => {}
     };
 
     let identity = Identity::new()?;
@@ -234,21 +231,18 @@ pub async fn upsert_cluster_secret(
     namespace: &str,
     labels: (BTreeMap<String, String>, BTreeMap<String, String>),
 ) -> Result<(), operator_common::Error> {
-    match secret::get_data(
+    if let Ok(i) = secret::get_data(
         client.clone(),
         format!("ipfs-cluster-{name}-cluster-secret").as_str(),
-        &namespace,
+        namespace,
     )
     .await
     {
-        Ok(i) => {
-            if i.contains_key("cluster-secret") {
-                return Ok(());
-            } else {
-                {}
-            }
+        if i.contains_key("cluster-secret") {
+            return Ok(());
+        } else {
+            {}
         }
-        Err(_) => {}
     };
 
     let mut cluster_secret = [0u8; 32];

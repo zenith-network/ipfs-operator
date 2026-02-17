@@ -35,12 +35,11 @@ pub async fn generate_config(
         let mut config: Value = serde_json::from_str(conf["config"].as_str())?;
         config["Identity"]["PeerID"] = Value::String(id.peer_id);
         config["Identity"]["PrivKey"] = Value::String(id.priv_key);
-        let external_addr =
-            external_addrs
-                .get(&format!("{idx}"))
-                .ok_or(Error::ExternalAddressMissing(format!(
-                    "{idx} doesn't exist"
-                )))?;
+        let external_addr = external_addrs
+            .get(&idx)
+            .ok_or(Error::ExternalAddressMissing(format!(
+                "{idx} doesn't exist"
+            )))?;
         config["Addresses"]["Announce"] = Value::Array(vec![Value::String(format!(
             "/ip4/{external_addr}/tcp/4001"
         ))]);
@@ -58,7 +57,7 @@ pub async fn generate_config(
         config["Routing"]["DelegatedRouters"] = Value::Array(vec![]);
         config["Ipns"]["DelegatedPublishers"] = Value::Array(vec![]);
 
-        configs.insert(format!("{idx}"), serde_json::to_string_pretty(&config)?);
+        configs.insert(idx, serde_json::to_string_pretty(&config)?);
     }
 
     info!("bootstrap_list: {bootstrap_list:?}");
@@ -80,12 +79,11 @@ pub async fn get_bootstrap_list(
     let mut bootstrap_list: Vec<String> = Vec::new();
 
     for (idx, id) in identities.ids.iter() {
-        let external_addr =
-            external_addrs
-                .get(&format!("{idx}"))
-                .ok_or(Error::ExternalAddressMissing(format!(
-                    "{idx} doesn't exist"
-                )))?;
+        let external_addr = external_addrs
+            .get(idx)
+            .ok_or(Error::ExternalAddressMissing(format!(
+                "{idx} doesn't exist"
+            )))?;
         bootstrap_list.push(format!("/ip4/{external_addr}/tcp/4001/ipfs/{}", id.peer_id));
     }
 

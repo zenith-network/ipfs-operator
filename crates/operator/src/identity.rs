@@ -41,7 +41,7 @@ impl Identities {
             configmap::deploy(
                 client.clone(),
                 &format!("{name}-identities"),
-                &namespace,
+                namespace,
                 identity_to_string(&identities)?,
                 labels,
             )
@@ -73,6 +73,10 @@ async fn _create(
 impl Identities {
     pub fn len(&self) -> usize {
         self.ids.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ids.is_empty()
     }
 
     // pub fn as_string(&self) -> Result<BTreeMap<String, String>, Error> {

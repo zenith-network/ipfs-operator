@@ -225,7 +225,7 @@ impl Common {
 
     #[instrument(skip(client))]
     pub async fn generate_configs(&mut self, client: Client) -> Result<(), Error> {
-        if self.bootstrap_list.len() == 0 {
+        if self.bootstrap_list.is_empty() {
             self.generate_bootstrap_list(client.clone()).await?;
         }
 

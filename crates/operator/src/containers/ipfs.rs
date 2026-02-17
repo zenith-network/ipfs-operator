@@ -74,7 +74,6 @@ pub fn container(name: &str, spec: &NodeSpec) -> Container {
                     "ls".to_owned(),
                     "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn".to_owned(),
                 ]),
-                ..ExecAction::default()
             }),
             ..Probe::default()
         }),
