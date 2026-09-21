@@ -1,15 +1,20 @@
 # IPFS Operator
 
-1) IPFS Operator Namespaces
+1. IPFS Operator Namespaces
+
 ```
 kubectl create namespace ipfs-operator
 kubectl create namespace ipfs
 ```
-2) Deploy pull secret
+
+2. Deploy pull secret
+
 ```
 ./scripts/create_pull_secret.sh
 ```
-2) Envoy Gateway
+
+2. Envoy Gateway
+
 ```
 helm install \
   eg oci://docker.io/envoyproxy/gateway-helm \
@@ -17,19 +22,26 @@ helm install \
   --namespace envoy-gateway-system \
   --create-namespace
 ```
-4) After deploying Envoy get the external IP and update cloudflare
+
+4. After deploying Envoy get the external IP and update cloudflare
+
 ```
 kubectl -n ipfs-system get gateway/eg -o jsonpath='{.status.addresses[0].value}'
 ```
-3) Create certificate
+
+3. Create certificate
+
 ```
 ./scripts/create_certificate.sh
 ```
-4) Create credentials
+
+4. Create credentials
+
 ```
 ./scripts/create_credentials.sh
 ```
 
 # Bootstrap cluster
+
 ./scripts/create_swarm_key.sh
 kubectl apply -f bootstrap.yaml

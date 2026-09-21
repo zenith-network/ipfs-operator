@@ -25,7 +25,7 @@
               p.nil
               p.nixd
               p.libiconv
-              p.darwin.apple_sdk.frameworks.Security
+              #p.darwin.apple_sdk.frameworks.Security
             ];
           };
       }
