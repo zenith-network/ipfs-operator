@@ -26,7 +26,6 @@ default = []
 telemetry = ["tonic", "opentelemetry-otlp"]
 
 [dependencies]
-#operator-common = { path = "../operator-common" }
 operator-common.workspace = true
 actix-web.workspace = true
 futures.workspace = true

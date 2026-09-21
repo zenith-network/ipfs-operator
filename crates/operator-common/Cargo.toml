@@ -1,0 +1,16 @@
+[package]
+name = "operator-common"
+version = "0.2.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+k8s-openapi = { workspace = true, features = ["latest"] }
+kube = { workspace = true, features = ["runtime", "client", "derive"] }
+kube-runtime.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tracing.workspace = true
+rand.workspace = true

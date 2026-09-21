@@ -1,0 +1,102 @@
+use k8s_openapi::api::core::v1::ConfigMap;
+use kube::api::{DeleteParams, ObjectMeta, Patch, PatchParams};
+use kube::{Api, Client, Error};
+use std::collections::BTreeMap;
+use tracing::{Level, event, instrument};
+
+#[instrument(skip(client))]
+pub async fn deploy(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    data: BTreeMap<String, String>,
+    labels: BTreeMap<String, String>,
+) -> Result<ConfigMap, Error> {
+    let object: ConfigMap = ConfigMap {
+        data: Some(data),
+        metadata: ObjectMeta {
+            name: Some(name.to_owned()),
+            namespace: Some(namespace.to_owned()),
+            labels: Some(labels.clone()),
+            ..ObjectMeta::default()
+        },
+        ..ConfigMap::default()
+    };
+
+    event!(Level::INFO, name, namespace, "Creating ConfigMap");
+
+    // Create the pvc defined above
+    let service_api: Api<ConfigMap> = Api::namespaced(client, namespace);
+    let params = PatchParams::apply(name);
+    service_api
+        .patch(name, &params, &Patch::Apply(&object))
+        .await
+}
+
+#[instrument(skip(client))]
+pub async fn delete(client: Client, name: String, namespace: String) -> Result<(), Error> {
+    event!(Level::INFO, name, namespace, "Deleting ConfigMap");
+
+    let api: Api<ConfigMap> = Api::namespaced(client, namespace.as_str());
+    match api.delete(name.as_str(), &DeleteParams::default()).await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            match e {
+                // If the resource doesn't exist, we can ignore the error
+                Error::Api(er) => {
+                    if er.reason == "NotFound" {
+                        return Ok(());
+                    };
+                    Err(Error::Api(er))
+                }
+                _ => Err(e),
+            }
+        }
+    }
+}
+
+#[instrument(skip(client))]
+pub async fn get_data(
+    client: Client,
+    name: &str,
+    namespace: &str,
+) -> Result<BTreeMap<String, String>, crate::Error> {
+    let service_api: Api<ConfigMap> = Api::namespaced(client, namespace);
+
+    let default_config = match service_api.get_opt(name).await? {
+        Some(res) => res,
+        None => {
+            return Err(crate::Error::ConfigMapError(format!(
+                "ConfigMap {name} not found"
+            )));
+        }
+    };
+
+    match default_config.data {
+        Some(c) => Ok(c),
+        None => Err(crate::Error::ConfigMapError(
+            "ConfigMap missing data".to_string(),
+        )),
+    }
+}
+
+#[instrument(skip(client))]
+pub async fn get_data_opt(
+    client: Client,
+    name: &str,
+    namespace: &str,
+) -> Result<Option<BTreeMap<String, String>>, crate::Error> {
+    let service_api: Api<ConfigMap> = Api::namespaced(client, namespace);
+
+    let default_config = match service_api.get_opt(name).await? {
+        Some(res) => res,
+        None => return Ok(None),
+    };
+
+    match default_config.data {
+        Some(c) => Ok(Some(c)),
+        None => Err(crate::Error::ConfigMapError(
+            "ConfigMap missing data".to_string(),
+        )),
+    }
+}
