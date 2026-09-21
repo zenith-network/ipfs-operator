@@ -38,7 +38,7 @@ kubectl -n ipfs-system get gateway/eg -o jsonpath='{.status.addresses[0].value}'
 4. Create credentials
 
 ```
-./scripts/create_credentials.sh
+IPFS_OPERATOR_WEB_USERNAME=your-user ./scripts/create_credentials.sh
 ```
 
 # Bootstrap cluster

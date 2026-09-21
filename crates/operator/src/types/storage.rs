@@ -14,7 +14,7 @@ use operator_common::types::{configmap, load_balancer, secret, statefulset};
 use rand::{Rng, thread_rng};
 use std::collections::BTreeMap;
 use std::string::ToString;
-use tracing::{Level, event, info, instrument};
+use tracing::{Level, event, instrument};
 
 #[instrument(skip(client))]
 pub async fn deploy(
@@ -248,8 +248,6 @@ pub async fn upsert_cluster_secret(
     let mut cluster_secret = [0u8; 32];
     thread_rng().try_fill(&mut cluster_secret[..])?;
     let encoded_secret = hex::encode(cluster_secret);
-
-    info!("Generated cluster secret: {}", encoded_secret);
 
     let data = BTreeMap::from([(
         "cluster-secret".to_string(),

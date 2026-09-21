@@ -84,7 +84,7 @@ impl Common {
         })
     }
 
-    #[instrument(skip(client))]
+    #[instrument(skip(self, client))]
     pub async fn create_lb(&self, client: Client, ports: Vec<Port>) -> Result<(), Error> {
         let mut service_selector_labels = self.labels.1.clone();
         service_selector_labels.append(&mut BTreeMap::from([(
@@ -117,7 +117,7 @@ impl Common {
         Ok(())
     }
 
-    #[instrument(skip(client))]
+    #[instrument(skip(self, client))]
     pub async fn create_external_ip_cm(&mut self, client: Client) -> Result<(), Error> {
         self.external_addrs = match load_balancer::get_external_ips(
             client.clone(),
@@ -156,7 +156,7 @@ impl Common {
         Ok(())
     }
 
-    #[instrument(skip(client))]
+    #[instrument(skip(self, client))]
     pub async fn generate_bootstrap_list(&mut self, client: Client) -> Result<(), Error> {
         if self.external_addrs.is_empty() {
             self.create_external_ip_cm(client.clone()).await?;
@@ -223,7 +223,7 @@ impl Common {
         Ok(())
     }
 
-    #[instrument(skip(client))]
+    #[instrument(skip(self, client))]
     pub async fn generate_configs(&mut self, client: Client) -> Result<(), Error> {
         if self.bootstrap_list.is_empty() {
             self.generate_bootstrap_list(client.clone()).await?;

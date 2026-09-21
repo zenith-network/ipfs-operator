@@ -132,3 +132,14 @@ tags
 # Persistent undo
 [._]*.un~
 
+### Generated node state and credentials
+/config
+/data/
+/chart_data/
+/swarm.key
+/.htpasswd
+/ipfs-operator-web.htpasswd
+/*zenith.network.key
+/*zenith.network.csr
+/*zenith.network.crt
+/www.example.com.csr

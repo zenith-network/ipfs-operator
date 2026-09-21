@@ -12,7 +12,7 @@ use crate::identity::Identities;
 
 const OPERATOR_NAMESPACE: &str = "ipfs-system";
 
-#[instrument(skip(client))]
+#[instrument(skip(client, identities))]
 pub async fn generate_config(
     client: Client,
     name: &str,
@@ -61,11 +61,10 @@ pub async fn generate_config(
     }
 
     info!("bootstrap_list: {bootstrap_list:?}");
-    info!("configs: {configs:?}");
     Ok(configs)
 }
 
-#[instrument]
+#[instrument(skip(identities))]
 pub async fn get_bootstrap_list(
     identities: Identities,
     external_addrs: BTreeMap<String, String>,
