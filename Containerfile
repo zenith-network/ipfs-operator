@@ -13,7 +13,7 @@ ARG RUST_TAG=$RUST_VERSION-alpine$ALPINE_TAG
 
 # Define stages from base images, so they can be refereced in COPY commands
 # in the next stages
-FROM rust:$RUST_TAG as rust
+FROM rust:$RUST_TAG AS rust
 
 # Stage 3: full build environment (Rust, Buf, Protobuf code generators)
 # This stage can be used as a dev environment for zenith-cli (e.g. from dev containers)

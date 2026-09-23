@@ -7,10 +7,11 @@ on:
 
 permissions:
   contents: write
-  packages: read
 
 jobs:
   release:
+    # Unset by default; enable only after Quay credentials and repositories are configured.
+    if: vars.QUAY_RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,26 +23,41 @@ jobs:
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_SECRET_KEY }}
 
-      - name: For push get current rust app version from its Cargo.toml.
+      - name: Get operator version
         id: app_version
-        run: echo "TAG=$(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "controller") | .version')" >> $GITHUB_OUTPUT
+        run: echo "TAG=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "ipfs-operator") | .version')" >> "$GITHUB_OUTPUT"
 
-      - name: Use that version to do something funny.
-        shell: bash
-        run: echo "Current app version is ${{ steps.app_version.outputs.TAG }}"
+      - name: Build container images
+        env:
+          TAG: ${{ steps.app_version.outputs.TAG }}
+        run: |
+          docker build . -f Containerfile --target ipfs-operator --tag "quay.io/gevulot/ipfs-operator:$TAG" --tag quay.io/gevulot/ipfs-operator:latest
+          docker build . -f Containerfile --target bootstrap-web --tag "quay.io/gevulot/bootstrap-web:$TAG" --tag quay.io/gevulot/bootstrap-web:latest
+
+      - name: Push container images
+        env:
+          TAG: ${{ steps.app_version.outputs.TAG }}
+        run: |
+          docker push "quay.io/gevulot/ipfs-operator:$TAG"
+          docker push quay.io/gevulot/ipfs-operator:latest
+          docker push "quay.io/gevulot/bootstrap-web:$TAG"
+          docker push quay.io/gevulot/bootstrap-web:latest
 
       - name: Create tag
         uses: actions/github-script@v7
+        env:
+          VERSION: ${{ steps.app_version.outputs.TAG }}
         with:
           script: |
-            github.rest.git.createRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: 'refs/tags/v${{ steps.app_version.outputs.TAG }}',
-              sha: context.sha
-            })
-
-      - name: Building & Pushing Docker Image
-        run: |
-          docker build . -f Containerfile --tag quay.io/gevulot/gevulot-operator:${{ steps.app_version.outputs.TAG }} --tag quay.io/gevulot/gevulot-operator:latest
-          docker push quay.io/gevulot/gevulot-operator:${{ steps.app_version.outputs.TAG }}
+            const ref = `tags/v${process.env.VERSION}`;
+            try {
+              await github.rest.git.getRef({ owner: context.repo.owner, repo: context.repo.repo, ref });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/${ref}`,
+                sha: context.sha
+              });
+            }
