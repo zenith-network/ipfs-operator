@@ -41,7 +41,7 @@ tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["json", "env-filter", "fmt"] }
 tracing-opentelemetry.workspace = true
 opentelemetry = { workspace = true, features = ["trace", "rt-tokio"] }
-opentelemetry-otlp = { workspace = true, features = ["tokio"], optional = true }
+opentelemetry-otlp = { workspace = true, features = ["grpc-tonic", "tokio", "trace"], optional = true }
 tonic = { workspace = true, optional = true }
 thiserror.workspace = true
 anyhow.workspace = true
