@@ -1,7 +1,7 @@
 use crate::IpfsNode;
 use kube::ResourceExt;
 use operator_common::Error;
-use prometheus::{histogram_opts, opts, HistogramVec, IntCounter, IntCounterVec, Registry};
+use prometheus::{HistogramVec, IntCounter, IntCounterVec, Registry, histogram_opts, opts};
 use tokio::time::Instant;
 
 #[derive(Clone)]

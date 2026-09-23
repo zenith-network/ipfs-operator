@@ -8,7 +8,7 @@ publish = false
 
 [features]
 default = []
-telemetry = ["opentelemetry-otlp"]
+telemetry = ["tonic", "opentelemetry-otlp"]
 
 [dependencies]
 ipfs-operator = { path = "../operator" }
@@ -21,7 +21,8 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { workspace = true, features = ["json", "env-filter", "fmt"] }
 tracing-opentelemetry.workspace = true
 opentelemetry = { workspace = true, features = ["trace", "rt-tokio"] }
-opentelemetry-otlp = { workspace = true, features = ["tokio"], optional = true }
+opentelemetry-otlp = { workspace = true, features = ["grpc-tonic", "tokio", "trace"], optional = true }
+tonic = { workspace = true, optional = true }
 kube-runtime.workspace = true
 kube = { workspace = true, features = ["runtime", "client", "derive" ]}
 k8s-openapi = { workspace = true, features = ["latest"] }
