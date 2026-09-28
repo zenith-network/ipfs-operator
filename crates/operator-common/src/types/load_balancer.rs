@@ -10,6 +10,17 @@ use crate::{
     types::service::{self, Port, ServiceType},
 };
 
+fn load_balancer_list_params(name: &str, kind: &str) -> ListParams {
+    ListParams::default()
+        .match_any()
+        .timeout(300)
+        .labels(
+            format!("app.kubernetes.io/instance={name},app.kubernetes.io/name=ipfs-{kind}-cluster")
+                .as_str(),
+        )
+        .fields("spec.type=LoadBalancer")
+}
+
 #[instrument(skip(client))]
 pub async fn deploy(
     client: Client,
@@ -21,12 +32,7 @@ pub async fn deploy(
     labels: (BTreeMap<String, String>, BTreeMap<String, String>),
 ) -> Result<(), crate::Error> {
     let service_api: Api<Service> = Api::namespaced(client.clone(), namespace.as_str());
-    let lp = ListParams::default()
-        .match_any()
-        .timeout(300)
-        .labels(format!("app.kubernetes.io/instance={name}").as_str())
-        .labels("app.kubernetes.io/name=ipfs-storage-cluster")
-        .fields("spec.type=LoadBalancer");
+    let lp = load_balancer_list_params(&name, &kind);
     let existing_load_balancers = service_api.list(&lp).await?;
     let lb_count = existing_load_balancers.items.len();
 
@@ -208,4 +214,27 @@ async fn _create(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_balancer_list_params;
+    use kube::core::Request;
+
+    #[test]
+    fn load_balancer_lookup_is_scoped_to_instance_and_kind() {
+        for (name, kind) in [
+            ("testnet-storage", "storage"),
+            ("testnet-bootstrap", "bootstrap"),
+        ] {
+            let params = load_balancer_list_params(name, kind);
+            let request = Request::new("/api/v1/namespaces/test/services")
+                .list(&params)
+                .unwrap();
+            let expected = format!(
+                "labelSelector=app.kubernetes.io%2Finstance%3D{name}%2Capp.kubernetes.io%2Fname%3Dipfs-{kind}-cluster"
+            );
+            assert!(request.uri().to_string().contains(&expected));
+        }
+    }
 }
