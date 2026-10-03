@@ -105,12 +105,5 @@ pub async fn delete(client: Client, name: String, namespace: String) -> Result<(
     )
     .await?;
 
-    configmap::delete(
-        client.clone(),
-        format!("{name}-identities"),
-        namespace.clone(),
-    )
-    .await?;
-
     load_balancer::delete(client, name, namespace).await
 }

@@ -145,3 +145,37 @@ impl Display for Identity {
         write!(f, "{id}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_identity_creation_and_serialization() {
+        let id = Identity::new().expect("Failed to create identity");
+        assert!(!id.peer_id.is_empty());
+        assert!(!id.priv_key.is_empty());
+
+        let json = serde_json::to_string(&id).expect("Failed to serialize");
+        let deserialized: Identity = serde_json::from_str(&json).expect("Failed to deserialize");
+        assert_eq!(id.peer_id, deserialized.peer_id);
+        assert_eq!(id.priv_key, deserialized.priv_key);
+    }
+
+    #[test]
+    fn test_identity_map_conversion() {
+        let id1 = Identity::new().unwrap();
+        let id2 = Identity::new().unwrap();
+        let mut map = BTreeMap::new();
+        map.insert("node-0".to_string(), id1);
+        map.insert("node-1".to_string(), id2);
+
+        let str_map = identity_to_string(&map).unwrap();
+        assert_eq!(str_map.len(), 2);
+
+        let parsed_map = string_to_identity(&str_map).unwrap();
+        assert_eq!(parsed_map.len(), 2);
+        assert_eq!(parsed_map["node-0"].peer_id, map["node-0"].peer_id);
+        assert_eq!(parsed_map["node-1"].peer_id, map["node-1"].peer_id);
+    }
+}
