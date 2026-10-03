@@ -135,7 +135,6 @@ impl Default for Persistence {
 //     pub service_port: i32,
 // }
 
-// Context for our reconciler
 #[derive(Clone)]
 pub struct Context {
     /// Kubernetes client
@@ -144,4 +143,26 @@ pub struct Context {
     pub diagnostics: Arc<RwLock<Diagnostics>>,
     /// Prometheus metrics
     pub metrics: Metrics,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_node_kind_display() {
+        assert_eq!(NodeKind::BootStrap.to_string(), "bootstrap");
+        assert_eq!(NodeKind::Storage.to_string(), "storage");
+    }
+
+    #[test]
+    fn test_node_spec_default() {
+        let spec = NodeSpec::default();
+        assert_eq!(spec.replicas, 1);
+        assert_eq!(spec.rust_log, "info");
+        assert_eq!(spec.kind, NodeKind::Storage);
+        assert_eq!(spec.p2p_port, Some(4001));
+        assert_eq!(spec.bootstrap_name, None);
+        assert_eq!(spec.ipfs.image.tag, Some("latest".into()));
+    }
 }

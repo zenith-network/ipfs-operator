@@ -325,3 +325,43 @@ pub fn generate_container_ports(ports: Vec<Port>) -> Vec<ContainerPort> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ipfs_ports() {
+        let ports = ipfs_ports();
+        assert_eq!(ports.len(), 4);
+        assert_eq!(ports[0].name, "swarm");
+        assert_eq!(ports[0].port, 4001);
+        assert_eq!(ports[1].name, "api");
+        assert_eq!(ports[1].port, 5001);
+        assert_eq!(ports[2].name, "ws");
+        assert_eq!(ports[2].port, 8081);
+        assert_eq!(ports[3].name, "http");
+        assert_eq!(ports[3].port, 8080);
+    }
+
+    #[test]
+    fn test_ipfs_cluster_ports() {
+        let ports = ipfs_cluster_ports();
+        assert_eq!(ports.len(), 3);
+        assert_eq!(ports[0].name, "api-http");
+        assert_eq!(ports[0].port, 9094);
+        assert_eq!(ports[1].name, "proxy-http");
+        assert_eq!(ports[1].port, 9095);
+        assert_eq!(ports[2].name, "cluster-swarm");
+        assert_eq!(ports[2].port, 9096);
+    }
+
+    #[test]
+    fn test_generate_container_ports() {
+        let ports = ipfs_ports();
+        let container_ports = generate_container_ports(ports);
+        assert_eq!(container_ports.len(), 4);
+        assert_eq!(container_ports[0].name.as_deref(), Some("swarm"));
+        assert_eq!(container_ports[0].container_port, 4001);
+    }
+}

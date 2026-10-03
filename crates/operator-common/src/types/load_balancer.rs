@@ -3,7 +3,7 @@ use kube::{Api, Client, Error, ResourceExt, api::ListParams, core::ErrorResponse
 use kube_runtime::wait::{Condition, await_condition};
 use std::{collections::BTreeMap, time::Duration};
 use tokio::task::JoinSet;
-use tracing::{error, instrument};
+use tracing::instrument;
 
 use crate::{
     labels, selector_labels,
@@ -138,16 +138,26 @@ pub async fn wait(
     let exists = await_condition(service_api, name.as_str(), external_ip_exists());
     let out = tokio::time::timeout(Duration::from_secs(300), exists).await?;
     match out {
-        Ok(res) => match res.unwrap().status.unwrap().load_balancer.unwrap().ingress {
-            Some(ingress) => {
-                if !ingress.is_empty() {
-                    return Ok(ingress[0].clone().ip.unwrap());
-                } else {
-                    Err(crate::Error::IngressListEmpty)
+        Ok(svc) => {
+            let status = svc
+                .and_then(|s| s.status)
+                .and_then(|st| st.load_balancer)
+                .ok_or(crate::Error::IngressListMissing)?;
+            match status.ingress {
+                Some(ingress) => {
+                    if let Some(first) = ingress.first() {
+                        if let Some(ip) = &first.ip {
+                            Ok(ip.clone())
+                        } else {
+                            Err(crate::Error::IPTimeout)
+                        }
+                    } else {
+                        Err(crate::Error::IngressListEmpty)
+                    }
                 }
+                None => Err(crate::Error::IngressListMissing),
             }
-            None => Err(crate::Error::IngressListMissing),
-        },
+        }
         Err(e) => Err(crate::Error::WaitError { source: e }),
     }
 }
@@ -159,7 +169,8 @@ fn external_ip_exists() -> impl Condition<Service> {
             && let Some(status) = &svc.status
             && let Some(lb) = &status.load_balancer
             && let Some(ingress) = &lb.ingress
-            && let Some(_ip) = &ingress[0].ip
+            && let Some(first) = ingress.first()
+            && first.ip.is_some()
         {
             return true;
         }
@@ -198,14 +209,79 @@ async fn _create(
             ports.clone(),
             (labels(name.clone(), kind.clone().to_string()), sl),
         ));
+    }
 
-        while let Some(res) = set.join_next().await {
-            match res {
-                Ok(_) => (),
-                Err(e) => error!(error = e.to_string()),
-            }
-        }
+    while let Some(res) = set.join_next().await {
+        res??;
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use k8s_openapi::api::core::v1::{LoadBalancerIngress, LoadBalancerStatus, ServiceStatus};
+
+    #[test]
+    fn test_external_ip_exists_condition() {
+        let condition = external_ip_exists();
+
+        // None service
+        assert!(!condition.matches_object(None));
+
+        // Service with None status
+        let svc_no_status = Service::default();
+        assert!(!condition.matches_object(Some(&svc_no_status)));
+
+        // Service with status but None load_balancer
+        let svc_no_lb = Service {
+            status: Some(ServiceStatus::default()),
+            ..Default::default()
+        };
+        assert!(!condition.matches_object(Some(&svc_no_lb)));
+
+        // Service with empty ingress list (Must NOT panic!)
+        let svc_empty_ingress = Service {
+            status: Some(ServiceStatus {
+                load_balancer: Some(LoadBalancerStatus {
+                    ingress: Some(vec![]),
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(!condition.matches_object(Some(&svc_empty_ingress)));
+
+        // Service with ingress having None ip
+        let svc_no_ip = Service {
+            status: Some(ServiceStatus {
+                load_balancer: Some(LoadBalancerStatus {
+                    ingress: Some(vec![LoadBalancerIngress {
+                        hostname: Some("example.com".into()),
+                        ip: None,
+                        ..Default::default()
+                    }]),
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(!condition.matches_object(Some(&svc_no_ip)));
+
+        // Service with valid IP
+        let svc_with_ip = Service {
+            status: Some(ServiceStatus {
+                load_balancer: Some(LoadBalancerStatus {
+                    ingress: Some(vec![LoadBalancerIngress {
+                        ip: Some("192.168.1.100".into()),
+                        ..Default::default()
+                    }]),
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(condition.matches_object(Some(&svc_with_ip)));
+    }
 }

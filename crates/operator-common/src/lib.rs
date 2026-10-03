@@ -111,3 +111,49 @@ pub fn selector_labels(name: String, kind: String) -> BTreeMap<String, String> {
 pub fn external_address_name(name: &str) -> String {
     format!("{name}-external-addresses")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_selector_labels() {
+        let labels = selector_labels("my-node".into(), "storage".into());
+        assert_eq!(
+            labels.get("app.kubernetes.io/name").unwrap(),
+            "ipfs-storage-cluster"
+        );
+        assert_eq!(labels.get("app.kubernetes.io/instance").unwrap(), "my-node");
+        assert_eq!(labels.len(), 2);
+    }
+
+    #[test]
+    fn test_labels() {
+        let labels = labels("my-node".into(), "bootstrap".into());
+        assert_eq!(
+            labels.get("app.kubernetes.io/name").unwrap(),
+            "ipfs-bootstrap-cluster"
+        );
+        assert_eq!(labels.get("app.kubernetes.io/instance").unwrap(), "my-node");
+        assert_eq!(labels.get("app.kubernetes.io/version").unwrap(), "0.2.0");
+        assert_eq!(
+            labels.get("app.kubernetes.io/managed-by").unwrap(),
+            "ipfs-operator"
+        );
+        assert_eq!(labels.len(), 4);
+    }
+
+    #[test]
+    fn test_external_address_name() {
+        assert_eq!(
+            external_address_name("cluster1"),
+            "cluster1-external-addresses"
+        );
+    }
+
+    #[test]
+    fn test_error_metric_label() {
+        let err = Error::IllegalDocument;
+        assert_eq!(err.metric_label(), "illegaldocument");
+    }
+}

@@ -31,7 +31,7 @@ pub async fn deploy(
             return Err(Error::Api(ErrorResponse {
                 status: "Failed".to_string(),
                 message: err.to_string(),
-                reason: "Failed to create load balancers for p2p port".to_string(),
+                reason: "Failed to upsert peer info secret".to_string(),
                 code: 418,
             }));
         }
@@ -43,7 +43,7 @@ pub async fn deploy(
             return Err(Error::Api(ErrorResponse {
                 status: "Failed".to_string(),
                 message: err.to_string(),
-                reason: "Failed to create load balancers for p2p port".to_string(),
+                reason: "Failed to upsert cluster secret".to_string(),
                 code: 418,
             }));
         }
